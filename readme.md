@@ -8,6 +8,10 @@ The **Stipple Art Generator** is an interactive tool that transforms an image in
 ![Stipple art UI](/images/stipple-art-ui.png "Stipple art UI")
 
 
+Play with stipple art generator here
+[Stipple art generator](https://prabinpebam.github.io/stipple-art/)
+
+
 ---
 
 ## Approach
