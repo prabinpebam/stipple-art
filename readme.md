@@ -73,6 +73,7 @@ The project is a static browser app with no build step:
 - Includes keyboard focus indicators and reduced-motion support.
 - Keeps ink/paper tokens fixed across app themes so changing the interface theme
   does not change the artwork or exported SVG.
+- Shape and orientation pickers reuse the segmented-control component.
 
 ### 4. **studio-ui.js**
 - Applies the system color scheme before first paint and remembers manual theme
@@ -81,6 +82,70 @@ The project is a static browser app with no build step:
 - Supports `?scoutTheme=light` or `?scoutTheme=dark` for explicit preview themes.
 - Updates slider values and filled tracks, handles the empty-state upload button,
   and displays drag-and-drop feedback.
+
+### 5. **shape-geometry.js**
+- Supplies regular square, triangle, and hexagon vertices for shared canvas/SVG
+  geometry. Dots continue to use circles.
+- Computes the major axis of each Voronoi cell from polygon area moments.
+- Has dependency-free regression tests in `shape-geometry.test.js`.
+
+### 6. **preview-viewport.js**
+- Implements zoom and pan as a separate view transform, independent of artwork
+  generation, shape geometry, and export.
+- Batches navigation events into a single CSS canvas transform per animation frame.
+- Includes dependency-free zoom anchoring and pan-bounds tests in
+  `preview-viewport.test.js`.
+
+## Preview navigation
+
+After uploading an image, use the preview's **- / +**, percentage, and **Fit**
+controls. Zoom ranges from **25% to 800%**, relative to the fitted canvas
+(100% means fit, not the image's native pixel size).
+
+- Mouse wheel / trackpad vertical scroll zooms around the cursor over the canvas.
+  Scroll elsewhere to scroll the page or settings.
+- Drag with the primary or middle mouse button to pan. Pointer capture keeps the
+  drag active when the pointer leaves the preview.
+- On touch, drag with one finger to pan or pinch with two fingers to zoom and pan.
+- Double-click to zoom in; Shift-double-click to zoom out.
+- With the preview focused, use **+ / -** to zoom, **arrow keys** to pan, and
+  **0** or **Home** to fit.
+
+Pan bounds prevent losing the canvas off-screen. New image uploads reset to fit;
+appearance changes and generation preserve the current view. Resizing preserves
+the relative view position. Navigation remains available during refinement and
+animation, but is disabled while loading an image.
+
+For responsiveness, navigation scales the existing raster canvas using a
+compositor transform: it does not redraw marks, resample colors, rebuild Voronoi
+cells, or allocate a zoom-sized bitmap. This trades native vector sharpness at
+high preview magnification for low interaction cost. SVG export remains sharp,
+full-size, and unaffected by preview zoom or pan.
+
+## Shapes, orientation, and size
+
+Choose **Dots**, **Squares**, **Triangles**, or **Hexagons** under **Mark appearance**.
+Changing shape or appearance updates existing artwork without regenerating its
+point distribution. SVG export uses the exact geometry and colors in the preview.
+
+Polygon shapes support three orientation modes:
+
+- **Same angle for all**: the shared-angle slider rotates every shape by 0-360
+  degrees clockwise. At zero, squares are upright, triangles point up, and
+  hexagons have a vertex pointing right.
+- **Random orientation**: each mark gets a rotation from a separate seeded random
+  sequence at generation time. Its rotation stays fixed through refinement,
+  appearance changes, and export. The random seed sets the starting rotations.
+- **Follow Voronoi pattern**: squares align an edge, triangles point a vertex,
+  and hexagons point a vertex along the longest axis of their current Voronoi cell.
+  The axis is recalculated as points move during refinement or animation and cached
+  for subsequent appearance changes. Symmetric or degenerate cells use a neutral
+  axis because they have no unique preferred direction.
+
+Orientation controls are hidden for dots, which look identical at every angle.
+**Minimum radius** and **Radius variation** apply to every shape: radius means
+center-to-edge for dots and center-to-vertex for polygons, in canvas pixels.
+Brightness controls the added variation exactly as it does for dots.
 
 ## Design system
 
@@ -110,7 +175,7 @@ Bootstrap and jQuery are not required.
 3. Click **Generate** to create the stipple art.
 4. (Optional) Enable **Animate Voronoi** to see the process in real-time.
 5. Use **Stop animation** to keep the current pattern.
-6. Fine-tune dot radius, variation, or original colors directly on the preview.
+6. Fine-tune shape, orientation, radius, variation, or original colors on the preview.
 7. Download the final result with **Export SVG**.
 
 Generation controls are locked while rendering to prevent overlapping operations.
@@ -131,6 +196,9 @@ JavaScript syntax can be checked with:
 ```sh
 node --check studio-ui.js
 node --check stipple-art.js
+node --check shape-geometry.js
+node --check preview-viewport.js
+node --test shape-geometry.test.js preview-viewport.test.js
 ```
 
 Enjoy creating beautiful stipple art!

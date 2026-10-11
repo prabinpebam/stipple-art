@@ -12,6 +12,7 @@ document.addEventListener("DOMContentLoaded", function() {
   const progressBar = document.getElementById('progressBar');
   const progressValue = document.getElementById('progressValue');
   const stage = document.getElementById('renderArea');
+  const viewport = new PreviewViewport(stage, canvas);
   const settingsForm = document.getElementById('settingsForm');
   const stopButton = document.getElementById('stopButton');
   const status = document.getElementById('studioStatus');
@@ -30,6 +31,9 @@ document.addEventListener("DOMContentLoaded", function() {
   const sampleCountSlider = document.getElementById('sampleCount');
   const colorizeDotsSwitch = document.getElementById('colorizeDots');
   const animateVoronoiSwitch = document.getElementById('animateVoronoi');
+  const shapeInputs = settingsForm.querySelectorAll('input[name="shapeOption"]');
+  const orientationInputs = settingsForm.querySelectorAll('input[name="orientationOption"]');
+  const shapeAngleSlider = document.getElementById('shapeAngle');
 
   // Default: White on Black.
   let currentStippleColor = 'white';
@@ -38,6 +42,28 @@ document.addEventListener("DOMContentLoaded", function() {
   let globalImgData = null; // Full-resolution image pixel data.
   let animationFrameID = null;
   let busyMode = null;
+  let cellAngles = null;
+  let renderedArtwork = null;
+
+  function selectedShape() {
+    return settingsForm.querySelector('input[name="shapeOption"]:checked').value;
+  }
+
+  function selectedOrientation() {
+    return settingsForm.querySelector('input[name="orientationOption"]:checked').value;
+  }
+
+  function syncOrientationControls() {
+    const isDot = selectedShape() === 'dot';
+    const mode = selectedOrientation();
+    document.getElementById('orientationControls').hidden = isDot;
+    document.getElementById('shapeAngleField').hidden = mode !== 'fixed';
+    orientationInputs.forEach(input => { input.disabled = Boolean(busyMode) || isDot; });
+    shapeAngleSlider.disabled = Boolean(busyMode) || isDot || mode !== 'fixed';
+    document.getElementById('orientationHint').textContent = mode === 'random' ?
+      'Seeded rotations stay stable as the shapes move or resize.' : mode === 'voronoi' ?
+      "Follow each cell's longest axis as the pattern evolves." : 'Rotate every shape by the same angle.';
+  }
 
   function showStatus(message, tone = 'normal') {
     status.textContent = message;
@@ -47,15 +73,18 @@ document.addEventListener("DOMContentLoaded", function() {
   function setBusy(mode) {
     busyMode = mode;
     settingsForm.querySelectorAll('input').forEach(input => { input.disabled = Boolean(mode); });
+    syncOrientationControls();
     generateButton.disabled = Boolean(mode) || !image;
     downloadSVGButton.disabled = mode === 'loading' || mode === 'static' || !stipplePoints.length;
     stopButton.hidden = mode !== 'animation';
     stage.classList.toggle('is-busy', Boolean(mode));
     stage.setAttribute('aria-busy', String(Boolean(mode)));
+    viewport.setEnabled(Boolean(image) && mode !== 'loading');
     document.getElementById('previewState').textContent = mode === 'loading' ? 'Loading image' :
       mode === 'static' ? 'Refining dots' : mode === 'animation' ? 'Animating' :
-      stipplePoints.length ? `${stipplePoints.length.toLocaleString()} dots` : image ? 'Image ready' : 'No image yet';
+      stipplePoints.length ? `${stipplePoints.length.toLocaleString()} marks` : image ? 'Image ready' : 'No image yet';
   }
+  syncOrientationControls();
 
   function reportError(error) {
     console.error('Stipple Studio:', error);
@@ -68,6 +97,7 @@ document.addEventListener("DOMContentLoaded", function() {
   
   // Resize canvas to fill renderArea.
   function resizeCanvas() {
+    viewport.resize();
     canvas.width = stage.clientWidth;
     canvas.height = stage.clientHeight;
     renderStippleArt();
@@ -131,6 +161,7 @@ document.addEventListener("DOMContentLoaded", function() {
       throw new Error('The drawing libraries could not load. Check your connection and reload the page.');
     }
     const rng = mulberry32(seed);
+    const orientationRng = mulberry32(seed ^ 0x9E3779B9);
     const desiredCount = Number(stippleCountInput.value);
     if (!Number.isSafeInteger(desiredCount) || desiredCount < 1) {
       throw new Error('Enter a positive whole number of dots.');
@@ -156,7 +187,7 @@ document.addEventListener("DOMContentLoaded", function() {
       const brightness = getBrightness(x, y, globalImgData, image.width);
       const weight = currentStippleColor === 'white' ? brightness / 255 : 1 - brightness / 255;
       if (weight > whiteCutoff && rng() < weight) {
-        points.push({ x, y });
+        points.push({ x, y, randomAngle: orientationRng() * 2 * Math.PI });
       }
     }
     if (points.length < desiredCount) {
@@ -164,6 +195,7 @@ document.addEventListener("DOMContentLoaded", function() {
       throw new Error('Not enough image contrast to place the dots. Lower the brightness cutoff or switch ink & paper.');
     }
     stipplePoints = points;
+    cellAngles = null;
   }
 
   function refinePoints(sampleCount) {
@@ -173,8 +205,9 @@ document.addEventListener("DOMContentLoaded", function() {
       const cell = voronoi.cellPolygon(i);
       if (!cell) return pt;
       const [x, y] = computeWeightedCentroid(cell, globalImgData, image.width, sampleCount);
-      return { x, y };
+      return { ...pt, x, y };
     });
+    cellAngles = null;
   }
 
   function generateStippleArt(seed) {
@@ -230,133 +263,104 @@ document.addEventListener("DOMContentLoaded", function() {
     animationFrameID = requestAnimationFrame(animateIteration);
   }
   
-  // Render stipple art.
-  // If image exists but stipple art is not generated, show the preview.
+  function markColor(pt, radius, scale) {
+    const ink = currentStippleColor === 'white' ? inkLight : inkDark;
+    if (!colorizeDotsSwitch.checked) return ink;
+    const imageRadius = radius / scale;
+    let sumR = 0, sumG = 0, sumB = 0, count = 0;
+    for (let i = 0; i < 10; i++) {
+      const angle = Math.random() * 2 * Math.PI;
+      const r = Math.random() * imageRadius;
+      const sampleX = pt.x + r * Math.cos(angle);
+      const sampleY = pt.y + r * Math.sin(angle);
+      if (sampleX >= 0 && sampleX < image.width && sampleY >= 0 && sampleY < image.height) {
+        const col = getColor(sampleX, sampleY, globalImgData, image.width);
+        sumR += col.r;
+        sumG += col.g;
+        sumB += col.b;
+        count++;
+      }
+    }
+    return count ? `rgb(${Math.round(sumR / count)}, ${Math.round(sumG / count)}, ${Math.round(sumB / count)})` : ink;
+  }
+
+  function createRenderMarks(scale, offsetX, offsetY) {
+    const minSize = Number(minDotSizeSlider.value);
+    const sizeRange = Number(dotSizeRangeSlider.value);
+    const shape = selectedShape();
+    const mode = selectedOrientation();
+    const fixedAngle = Number(shapeAngleSlider.value) * Math.PI / 180;
+    if (shape !== 'dot' && mode === 'voronoi' && !cellAngles) {
+      const delaunay = d3.Delaunay.from(stipplePoints.map(pt => [pt.x, pt.y]));
+      const voronoi = delaunay.voronoi([0, 0, image.width, image.height]);
+      cellAngles = stipplePoints.map((_, i) => StippleGeometry.cellOrientation(voronoi.cellPolygon(i)));
+    }
+    return stipplePoints.map((pt, i) => {
+      const brightness = getBrightness(pt.x, pt.y, globalImgData, image.width) / 255;
+      const weight = currentStippleColor === 'white' ? brightness : 1 - brightness;
+      const radius = minSize + weight * sizeRange;
+      const cx = offsetX + pt.x * scale, cy = offsetY + pt.y * scale;
+      const alignedAngle = shape !== 'dot' && mode === 'voronoi' ?
+        cellAngles[i] + (shape === 'triangle' ? Math.PI / 2 : 0) : 0;
+      const angle = mode === 'random' ? pt.randomAngle : mode === 'voronoi' ? alignedAngle : fixedAngle;
+      return {
+        cx, cy, radius,
+        vertices: shape === 'dot' ? null : StippleGeometry.polygonVertices(shape, cx, cy, radius, angle),
+        fillColor: markColor(pt, radius, scale)
+      };
+    });
+  }
+
+  // Retain the exact rendered geometry and colors for SVG export.
   function renderStippleArt() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    renderedArtwork = null;
     document.getElementById('emptyState').hidden = Boolean(image);
-    if (!image) {
-      return;
-    }
-    if (stipplePoints.length === 0) {
-      const scale = Math.min(canvas.width / image.width, canvas.height / image.height);
-      const renderWidth = image.width * scale;
-      const renderHeight = image.height * scale;
-      const offsetX = (canvas.width - renderWidth) / 2;
-      const offsetY = (canvas.height - renderHeight) / 2;
-      ctx.drawImage(image, offsetX, offsetY, renderWidth, renderHeight);
-      return;
-    }
-    
+    if (!image || !canvas.width || !canvas.height) return;
     const scale = Math.min(canvas.width / image.width, canvas.height / image.height);
-    const renderWidth = image.width * scale;
-    const renderHeight = image.height * scale;
-    const offsetX = (canvas.width - renderWidth) / 2;
-    const offsetY = (canvas.height - renderHeight) / 2;
-    
-    ctx.fillStyle = currentStippleColor === 'white' ? paperDark : paperLight;
+    const offsetX = (canvas.width - image.width * scale) / 2;
+    const offsetY = (canvas.height - image.height * scale) / 2;
+    if (!stipplePoints.length) {
+      ctx.drawImage(image, offsetX, offsetY, image.width * scale, image.height * scale);
+      return;
+    }
+    const background = currentStippleColor === 'white' ? paperDark : paperLight;
+    const marks = createRenderMarks(scale, offsetX, offsetY);
+    ctx.fillStyle = background;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    const minSize = parseFloat(minDotSizeSlider.value);
-    const sizeRange = parseFloat(dotSizeRangeSlider.value);
-    const colorize = colorizeDotsSwitch.checked;
-    
-    stipplePoints.forEach(pt => {
-      let brightness = getBrightness(pt.x, pt.y, globalImgData, image.width);
-      const norm = (currentStippleColor === 'white') ? (brightness/255) : (1 - brightness/255);
-      const dotRadius = minSize + norm * sizeRange;
-      const cx = offsetX + pt.x * scale;
-      const cy = offsetY + pt.y * scale;
-      let fillColor;
-      if (colorize) {
-        const imageDotRadius = dotRadius / scale;
-        const samples = 10;
-        let sumR = 0, sumG = 0, sumB = 0, count = 0;
-        for (let i = 0; i < samples; i++) {
-          const angle = Math.random() * 2 * Math.PI;
-          const r = Math.random() * imageDotRadius;
-          const sampleX = pt.x + r * Math.cos(angle);
-          const sampleY = pt.y + r * Math.sin(angle);
-          if (sampleX >= 0 && sampleX < image.width && sampleY >= 0 && sampleY < image.height) {
-            const col = getColor(sampleX, sampleY, globalImgData, image.width);
-            sumR += col.r;
-            sumG += col.g;
-            sumB += col.b;
-            count++;
-          }
-        }
-        if (count > 0) {
-          const avgR = Math.round(sumR / count);
-          const avgG = Math.round(sumG / count);
-          const avgB = Math.round(sumB / count);
-          fillColor = `rgb(${avgR}, ${avgG}, ${avgB})`;
-        } else {
-          fillColor = currentStippleColor === 'white' ? inkLight : inkDark;
-        }
-      } else {
-        fillColor = currentStippleColor === 'white' ? inkLight : inkDark;
-      }
+    marks.forEach(mark => {
       ctx.beginPath();
-      ctx.arc(cx, cy, dotRadius, 0, 2*Math.PI);
-      ctx.fillStyle = fillColor;
+      if (mark.vertices) {
+        mark.vertices.forEach(([x, y], i) => {
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.closePath();
+      } else {
+        ctx.arc(mark.cx, mark.cy, mark.radius, 0, 2 * Math.PI);
+      }
+      ctx.fillStyle = mark.fillColor;
       ctx.fill();
     });
+    renderedArtwork = { width: canvas.width, height: canvas.height, background, marks };
   }
   
   // Download as SVG.
   function downloadSVG() {
     try {
-      if (!stipplePoints.length || !globalImgData) {
+      if (!renderedArtwork) {
         throw new Error('Generate stipple art before exporting.');
       }
-      const scale = Math.min(canvas.width / image.width, canvas.height / image.height);
-      const renderWidth = image.width * scale;
-      const renderHeight = image.height * scale;
-      const offsetX = (canvas.width - renderWidth) / 2;
-      const offsetY = (canvas.height - renderHeight) / 2;
-      
-      const minSize = parseFloat(minDotSizeSlider.value);
-      const sizeRange = parseFloat(dotSizeRangeSlider.value);
-      const colorize = colorizeDotsSwitch.checked;
-      
-      let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${canvas.width}" height="${canvas.height}" viewBox="0 0 ${canvas.width} ${canvas.height}">`;
-      svgContent += `<rect width="100%" height="100%" fill="${currentStippleColor === 'white' ? paperDark : paperLight}"/>`;
-      stipplePoints.forEach(pt => {
-        let brightness = getBrightness(pt.x, pt.y, globalImgData, image.width);
-        const norm = (currentStippleColor === 'white') ? (brightness/255) : (1 - brightness/255);
-        const dotRadius = minSize + norm * sizeRange;
-        const cx = offsetX + pt.x * scale;
-        const cy = offsetY + pt.y * scale;
-        let fillColor;
-        if (colorize) {
-          const imageDotRadius = dotRadius / scale;
-          const samples = 10;
-          let sumR = 0, sumG = 0, sumB = 0, count = 0;
-          for (let i = 0; i < samples; i++) {
-            const angle = Math.random() * 2 * Math.PI;
-            const r = Math.random() * imageDotRadius;
-            const sampleX = pt.x + r * Math.cos(angle);
-            const sampleY = pt.y + r * Math.sin(angle);
-            if (sampleX >= 0 && sampleX < image.width && sampleY >= 0 && sampleY < image.height) {
-              const col = getColor(sampleX, sampleY, globalImgData, image.width);
-              sumR += col.r;
-              sumG += col.g;
-              sumB += col.b;
-              count++;
-            }
-          }
-          if (count > 0) {
-            const avgR = Math.round(sumR / count);
-            const avgG = Math.round(sumG / count);
-            const avgB = Math.round(sumB / count);
-            fillColor = `rgb(${avgR}, ${avgG}, ${avgB})`;
-          } else {
-            fillColor = currentStippleColor === 'white' ? inkLight : inkDark;
-          }
+      const { width, height, background, marks } = renderedArtwork;
+      let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`;
+      svgContent += `<rect width="100%" height="100%" fill="${background}"/>`;
+      marks.forEach(mark => {
+        if (mark.vertices) {
+          const points = mark.vertices.map(vertex => vertex.join(',')).join(' ');
+          svgContent += `<polygon points="${points}" fill="${mark.fillColor}" />`;
         } else {
-          fillColor = currentStippleColor === 'white' ? inkLight : inkDark;
+          svgContent += `<circle cx="${mark.cx}" cy="${mark.cy}" r="${mark.radius}" fill="${mark.fillColor}" />`;
         }
-        svgContent += `<circle cx="${cx}" cy="${cy}" r="${dotRadius}" fill="${fillColor}" />`;
       });
       svgContent += `</svg>`;
       
@@ -395,7 +399,9 @@ document.addEventListener("DOMContentLoaded", function() {
       nextImage.onerror = () => reportError(new Error('This image could not be decoded. Try a PNG, JPEG, or WebP image.'));
       nextImage.onload = function() {
         image = nextImage;
+        viewport.reset();
         stipplePoints = [];
+        cellAngles = null;
         globalImgData = null;
         document.getElementById('imageFileName').textContent = file.name;
         document.getElementById('imageFileName').title = file.name;
@@ -459,7 +465,13 @@ document.addEventListener("DOMContentLoaded", function() {
     showStatus('Animation stopped. Your artwork is ready to export.');
   });
 
-  [minDotSizeSlider, dotSizeRangeSlider, colorizeDotsSwitch].forEach(input => {
+  [...shapeInputs, ...orientationInputs].forEach(input => {
+    input.addEventListener('change', () => {
+      syncOrientationControls();
+      renderStippleArt();
+    });
+  });
+  [minDotSizeSlider, dotSizeRangeSlider, colorizeDotsSwitch, shapeAngleSlider].forEach(input => {
     input.addEventListener('input', renderStippleArt);
   });
   settingsForm.querySelectorAll('input[name="colorOption"]').forEach(input => {
