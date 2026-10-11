@@ -150,13 +150,13 @@ canvases are released. Source transparency is retained, never flattened onto a
 background color. Fully transparent pixels receive zero stippling weight, and
 partially transparent pixels contribute proportionally to their alpha. Color
 sampling excludes invisible RGB values. Transparent artwork has no paper fill;
-a source-alpha mask clips shapes at transparent boundaries and preserves partial
-opacity in both preview renderers and SVG export. Opaque images retain the
-selected ink/paper background. Masked SVGs embed a working-resolution alpha PNG;
-the shapes remain vector geometry, while transparency detail follows that mask.
+each mark retains the alpha at its original position in both preview renderers
+and exports. Shapes are not clipped to the source silhouette: increasing radius
+or displacing particles lets the entire shape extend into formerly empty areas.
+Opaque images retain the selected ink/paper background. SVG shapes stay fully vector.
 The preview displays transparent regions over the selected ink/paper background:
 black-on-white always displays white paper, including in dark app mode.
-This viewing background is not baked into transparent source pixels or SVG masks.
+This viewing background is not baked into transparent source pixels or exports.
 
 | Formats | Support |
 | --- | --- |
@@ -182,6 +182,48 @@ are supplied when dimensions are known. Browser decoding can still use temporary
 full-source memory: these limits bound working data, not every internal decoder
 allocation. A decoder request times out after 60 seconds; a late bitmap is closed.
 No files are uploaded, and no additional codec libraries or services are required.
+
+## Mouse interaction
+
+Enable **Mouse interaction** in Appearance, then move the mouse over generated
+artwork. Nearby shapes repel and swirl in the cursor's wake, coast, and slowly
+return to their original positions when the cursor moves away. This is a
+preview-only effect: SVG and PNG exports always use the undisturbed artwork.
+Mouse dragging still pans; wheel zoom, touch navigation, and keyboard navigation
+are unchanged. Interaction pauses during import/refinement/Voronoi animation and
+resets when the artwork changes. Reduced-motion preferences disable the effect.
+Hidden tabs discard transient motion instead of accumulating simulation time.
+
+### Research and implementation
+
+The chosen model combines established techniques rather than a full fluid solver:
+
+- [Daniel Shiffman, *The Nature of Code*: Forces](https://natureofcode.com/forces/)
+  explains force accumulation and acceleration for interactive particles.
+- [Craig Reynolds: Steering Behaviors](https://www.red3d.com/cwr/steer/) provides
+  the flee/seek/arrival framework for local avoidance and returning to a target.
+- [Magnetic particle example](https://webdevpuneet.com/ui-snippets/three-magnetic-particles/)
+  describes exactly the home-position spring, proximity-weighted cursor
+  repulsion, and velocity damping pattern used in interactive particle fields.
+- [Glenn Fiedler: Fix Your Timestep](https://gafferongames.com/post/fix_your_timestep/)
+  explains fixed integration steps and bounded catch-up to avoid unstable springs
+  and runaway work after long frames.
+- [GPU Gems 38: Fast Fluid Dynamics](https://developer.nvidia.com/gpugems/gpugems/part-vi-beyond-triangles/chapter-38-fast-fluid-dynamics-simulation-gpu)
+  describes a true grid-based stable-fluids solver. Pressure/advection passes
+  are valuable for smoke/liquid, but unnecessary for this home-anchored effect.
+
+`particle-field.js` uses a damped spring toward each cached home position, a
+smooth finite-radius repulsive force, cursor-velocity impulses, and deterministic
+tangential agitation for a fluid-like wake. It is **not a physical fluid simulation**
+and does not calculate particle collisions. A fixed 120 Hz semi-implicit update
+with at most eight catch-up steps keeps forces stable; tiny motions snap exactly
+home so rendering stops when settled. Force radius/speed are measured in screen
+pixels and converted by zoom. State is stored in typed displacement/velocity
+arrays, separate from point geometry, colors, and per-mark opacity.
+Renderers translate cached shapes, cull their displaced positions, and reuse the
+existing frame scheduler and instanced GPU draw. No Voronoi rebuilding or color
+sampling occurs during mouse interaction. Particles carry their original opacity
+as they move; no source-image mask clips them.
 
 ## Preview navigation
 
@@ -281,7 +323,7 @@ Bootstrap and jQuery are not required.
 Generate and export actions stay in the bottom footer while desktop settings
 scroll independently. **Export SVG** and **Export PNG** share one row. PNG exports
 the full artwork at logical preview dimensions, independent of zoom and display
-density, using the same geometry, colors, and transparency mask as SVG.
+density, using the same geometry, colors, and per-mark opacity as SVG.
 
 1. Upload an image.
 2. Adjust parameters like stipple count, iteration count, dot size, and colorization.
@@ -314,7 +356,8 @@ node --check preview-viewport.js
 node --check image-import.js
 node --check preview-renderer.js
 node --check preview-gpu.js
-node --test shape-geometry.test.js preview-viewport.test.js preview-renderer.test.js image-import.test.js
+node --check particle-field.js
+node --test shape-geometry.test.js preview-viewport.test.js preview-renderer.test.js image-import.test.js particle-field.test.js
 ```
 
 Enjoy creating beautiful stipple art!

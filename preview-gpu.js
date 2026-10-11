@@ -3,29 +3,27 @@
     in vec2 aCorner;
     in vec4 aMark;
     in vec4 aStyle;
+    in float aOpacity;
     uniform vec2 uSize;
     uniform vec3 uView;
     uniform float uDensity;
     out vec2 vLocal;
-    out vec2 vPoint;
+    flat out float vOpacity;
     flat out vec4 vStyle;
     void main() {
       vec2 local = aCorner * (aMark.z + 1.0 / (uView.z * uDensity));
       float c = cos(aMark.w), s = sin(aMark.w);
       vLocal = mat2(c, -s, s, c) * local / aMark.z;
       vStyle = aStyle;
-      vPoint = aMark.xy + local;
+      vOpacity = aOpacity;
       vec2 screen = (aMark.xy + local) * uView.z + uView.xy;
       gl_Position = vec4(screen.x / uSize.x * 2.0 - 1.0, 1.0 - screen.y / uSize.y * 2.0, 0, 1);
     }`;
   const fragmentSource = `#version 300 es
     precision highp float;
     in vec2 vLocal;
-    in vec2 vPoint;
+    flat in float vOpacity;
     flat in vec4 vStyle;
-    uniform float uUseMask;
-    uniform vec4 uMaskRect;
-    uniform sampler2D uMask;
     out vec4 color;
     void main() {
       float distance = length(vLocal) - 1.0;
@@ -42,11 +40,7 @@
       }
       float aa = max(fwidth(distance), 0.00001);
       float alpha = 1.0 - smoothstep(-aa * 0.5, aa * 0.5, distance);
-      if (uUseMask > 0.5) {
-        vec2 uv = (vPoint - uMaskRect.xy) / uMaskRect.zw;
-        if (any(lessThan(uv, vec2(0))) || any(greaterThan(uv, vec2(1)))) discard;
-        alpha *= texture(uMask, uv).a;
-      }
+      alpha *= vOpacity;
       if (alpha <= 0.0) discard;
       color = vec4(vStyle.rgb, alpha);
     }`;
@@ -160,7 +154,7 @@
       const gl = this.gl;
       this.background = scene && scene.background ? this.color(scene.background) : [0, 0, 0, 0];
       const marks = scene && scene.marks ? scene.marks : [];
-      this.data = new Float32Array(marks.length * 8);
+      this.data = new Float32Array(marks.length * 9);
       this.visible = new Float32Array(this.data.length);
       const colors = new Map();
       for (let i = 0; i < marks.length; i++) {
@@ -168,13 +162,13 @@
         if (!colors.has(mark.fillColor)) colors.set(mark.fillColor, this.color(mark.fillColor));
         const color = colors.get(mark.fillColor);
         const angle = mark.vertices ? Math.atan2(mark.vertices[0][1] - mark.cy, mark.vertices[0][0] - mark.cx) : 0;
-        this.data.set([mark.cx, mark.cy, mark.radius, angle, color[0], color[1], color[2], mark.vertices ? mark.vertices.length : 0], i * 8);
+        this.data.set([mark.cx, mark.cy, mark.radius, angle, color[0], color[1], color[2], mark.vertices ? mark.vertices.length : 0, mark.opacity ?? 1], i * 9);
       }
       gl.bindBuffer(gl.ARRAY_BUFFER, this.instances);
       gl.bufferData(gl.ARRAY_BUFFER, this.data.byteLength, gl.DYNAMIC_DRAW);
-      if (scene && (scene.image || scene.mask)) {
+      if (scene && scene.image) {
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, scene.image || scene.mask);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, scene.image);
       } else {
         // Release the previous photo texture when switching to generated geometry.
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
@@ -182,7 +176,7 @@
       }
     }
 
-    render(view) {
+    render(view, offsets = null) {
       if (this.lost) return;
       const gl = this.gl, scene = this.scene;
       gl.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -214,26 +208,25 @@
         gl.uniform1i(gl.getUniformLocation(program, 'uImage'), 0);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       } else {
-        gl.uniform1f(gl.getUniformLocation(program, 'uUseMask'), scene.mask ? 1 : 0);
-        if (scene.mask) {
-          gl.activeTexture(gl.TEXTURE0);
-          gl.bindTexture(gl.TEXTURE_2D, this.texture);
-          gl.uniform1i(gl.getUniformLocation(program, 'uMask'), 0);
-          gl.uniform4f(gl.getUniformLocation(program, 'uMaskRect'), scene.offsetX, scene.offsetY, scene.renderWidth, scene.renderHeight);
-        }
         const bounds = PreviewVisibility.visibleBounds(view, this.width, this.height);
         let count = 0;
         for (let i = 0; i < scene.marks.length; i++) {
           const mark = scene.marks[i];
-          if (!PreviewVisibility.isVisible(mark, bounds)) continue;
-          this.visible.set(this.data.subarray(i * 8, i * 8 + 8), count++ * 8);
+          const cx = mark.cx + (offsets ? offsets[i * 4] : 0);
+          const cy = mark.cy + (offsets ? offsets[i * 4 + 1] : 0);
+          if (cx + mark.radius < bounds.left || cx - mark.radius > bounds.right ||
+              cy + mark.radius < bounds.top || cy - mark.radius > bounds.bottom) continue;
+          const index = count++ * 9;
+          this.visible.set(this.data.subarray(i * 9, i * 9 + 9), index);
+          this.visible[index] = cx;
+          this.visible[index + 1] = cy;
         }
         gl.bindBuffer(gl.ARRAY_BUFFER, this.instances);
-        gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.visible, 0, count * 8);
-        for (const [name, offset] of [['aMark', 0], ['aStyle', 16]]) {
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.visible, 0, count * 9);
+        for (const [name, offset, size] of [['aMark', 0, 4], ['aStyle', 16, 4], ['aOpacity', 32, 1]]) {
           const location = gl.getAttribLocation(program, name);
           gl.enableVertexAttribArray(location);
-          gl.vertexAttribPointer(location, 4, gl.FLOAT, false, 32, offset);
+          gl.vertexAttribPointer(location, size, gl.FLOAT, false, 36, offset);
           gl.vertexAttribDivisor(location, 1);
         }
         gl.uniform1f(gl.getUniformLocation(program, 'uDensity'), Math.min(sx, sy));

@@ -246,6 +246,7 @@ output { font-family: var(--cp-font-mono); color: var(--cp-text); font-size: var
 .settings-panel .property-group .field + .field { margin-top: var(--cp-panel-related-gap); }
 .settings-panel .field + .field { margin-top: var(--cp-panel-field-gap); }
 .settings-panel .field + .switch-row { margin-top: var(--cp-panel-related-gap); }
+.settings-panel .interaction-toggle { margin-top: var(--cp-panel-group-gap); }
 .settings-panel .field-hint, .settings-panel .range-labels, .settings-panel .switch-row span span { display: none; }
 .settings-panel .input { min-height: var(--cp-panel-control-height); padding-block: var(--cp-space-1); }
 .settings-panel .field--inline { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; }

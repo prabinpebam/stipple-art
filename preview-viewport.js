@@ -145,9 +145,9 @@
     schedule() {
       this.view = constrain(this.view, this.width, this.height);
       // Navigation and artwork changes share one drawing frame.
-      if (this.frame === null) this.frame = requestAnimationFrame(() => {
+      if (this.frame === null) this.frame = requestAnimationFrame(timestamp => {
         this.frame = null;
-        this.apply();
+        this.apply(timestamp);
       });
     }
 
@@ -158,9 +158,10 @@
       this.output.value = `${Math.round(this.view.zoom * 100)}%`;
     }
 
-    apply() {
-      this.draw(this.view);
+    apply(timestamp = performance.now()) {
+      const animate = this.draw(this.view, timestamp);
       this.updateControls();
+      if (animate === true) this.schedule();
     }
   }
 

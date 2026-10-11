@@ -46,9 +46,11 @@ test('Canvas fallback caches paths, preserves painter order and culls during nav
   });
   t.mock.method(console, 'warn', () => {});
   const draws = [], transforms = [];
+  const translations = [];
   const context = {
     setTransform(...values) { transforms.push(values); },
     clearRect() {}, save() {}, beginPath() {}, rect() {}, clip() {},
+    translate(x, y) { translations.push([x, y]); },
     fillRect() {}, restore() {},
     fill(path) { draws.push({ path: path.id, color: this.fillStyle }); }
   };
@@ -72,6 +74,14 @@ test('Canvas fallback caches paths, preserves painter order and culls during nav
   assert.equal(canvas.width, 1600);
   assert.equal(canvas.height, 1200);
   assert.equal(renderer.scene, scene);
+  draws.length = 0;
+  const offsets = new Float32Array(12);
+  offsets[8] = -700;
+  offsets[9] = -500;
+  renderer.render({ zoom: 8, x: 0, y: 0 }, offsets);
+  assert.deepEqual(draws.map(draw => draw.color), ['red', 'blue', 'green']);
+  assert.deepEqual(translations, [[-700, -500], [700, 500]]);
+  assert.equal(pathCount, 3);
   renderer.resize(800, 600, 1);
   assert.equal(canvas.width, 800);
   assert.equal(canvas.height, 600);

@@ -14,7 +14,12 @@ document.addEventListener("DOMContentLoaded", function() {
   const progressBar = document.getElementById('progressBar');
   const progressValue = document.getElementById('progressValue');
   const stage = document.getElementById('renderArea');
-  const viewport = new PreviewViewport(stage, canvas, view => renderer.render(view));
+  const particles = new ParticleField();
+  const viewport = new PreviewViewport(stage, canvas, (view, timestamp) => {
+    const animate = particles.advance(timestamp, view);
+    renderer.render(view, particles.enabled ? particles.offsets : null);
+    return animate;
+  });
   const settingsForm = document.getElementById('settingsForm');
   const stopButton = document.getElementById('stopButton');
   const status = document.getElementById('studioStatus');
@@ -38,6 +43,8 @@ document.addEventListener("DOMContentLoaded", function() {
   const sampleCountSlider = document.getElementById('sampleCount');
   const colorizeDotsSwitch = document.getElementById('colorizeDots');
   const animateVoronoiSwitch = document.getElementById('animateVoronoi');
+  const mouseInteractionSwitch = document.getElementById('mouseInteraction');
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const shapeInputs = settingsForm.querySelectorAll('input[name="shapeOption"]');
   const orientationInputs = settingsForm.querySelectorAll('input[name="orientationOption"]');
   const shapeAngleSlider = document.getElementById('shapeAngle');
@@ -55,6 +62,43 @@ document.addEventListener("DOMContentLoaded", function() {
   let appliedResolution = '2048';
   let hasTransparency = false;
   const importControls = document.querySelectorAll('input[name="resolutionOption"]');
+
+  function syncMouseInteraction() {
+    mouseInteractionSwitch.disabled = Boolean(busyMode) || reducedMotion.matches;
+    mouseInteractionSwitch.title = reducedMotion.matches ? 'Disabled by your reduced-motion preference.' :
+      'Move over the artwork to scatter shapes. Preview only.';
+    const enabled = mouseInteractionSwitch.checked && !busyMode && !reducedMotion.matches && Boolean(renderedArtwork);
+    if (particles.enabled !== enabled) particles.setEnabled(enabled);
+  }
+  mouseInteractionSwitch.addEventListener('change', () => {
+    syncMouseInteraction();
+    viewport.schedule();
+  });
+  reducedMotion.addEventListener('change', () => {
+    syncMouseInteraction();
+    viewport.schedule();
+  });
+  canvas.addEventListener('pointermove', event => {
+    if (event.pointerType !== 'mouse' || event.buttons || viewport.pointers.size || !particles.enabled) return;
+    const point = viewport.localPoint(event);
+    particles.move(point.x, point.y, event.timeStamp);
+    viewport.schedule();
+  });
+  ['pointerleave', 'pointerdown', 'pointercancel', 'wheel', 'dblclick'].forEach(type => {
+    canvas.addEventListener(type, () => particles.leave(), { passive: true });
+  });
+  stage.addEventListener('keydown', () => particles.leave());
+  window.addEventListener('blur', () => particles.leave());
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      particles.reset(particles.marks);
+      if (viewport.frame !== null) cancelAnimationFrame(viewport.frame);
+      viewport.frame = null;
+    } else {
+      viewport.schedule();
+    }
+  });
+  syncMouseInteraction();
 
   function importOption(name) {
     return Array.from(settingsForm.elements).find(input => input.name === name && input.checked).value;
@@ -99,6 +143,7 @@ document.addEventListener("DOMContentLoaded", function() {
     });
     updateResolutionState();
     syncOrientationControls();
+    syncMouseInteraction();
     generateButton.disabled = Boolean(mode) || !image;
     downloadSVGButton.disabled = mode === 'loading' || mode === 'static' || !stipplePoints.length;
     downloadPNGButton.disabled = downloadSVGButton.disabled || pngExporting;
@@ -340,7 +385,7 @@ document.addEventListener("DOMContentLoaded", function() {
         cellAngles[i] + (shape === 'triangle' ? Math.PI / 2 : 0) : 0;
       const angle = mode === 'random' ? pt.randomAngle : mode === 'voronoi' ? alignedAngle : fixedAngle;
       return {
-        cx, cy, radius,
+        cx, cy, radius, opacity: getColor(pt.x, pt.y, globalImgData, image.width).alpha,
         vertices: shape === 'dot' ? null : StippleGeometry.polygonVertices(shape, cx, cy, radius, angle),
         fillColor: markColor(pt, radius, scale)
       };
@@ -355,6 +400,8 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById('emptyState').hidden = Boolean(image);
     const width = stage.clientWidth, height = stage.clientHeight;
     if (!image || !width || !height) {
+      particles.reset([]);
+      syncMouseInteraction();
       renderer.setScene(null);
       viewport.schedule();
       return;
@@ -363,6 +410,8 @@ document.addEventListener("DOMContentLoaded", function() {
     const offsetX = (width - image.width * scale) / 2;
     const offsetY = (height - image.height * scale) / 2;
     if (!stipplePoints.length) {
+      particles.reset([]);
+      syncMouseInteraction();
       renderer.setScene({ width, height, image, offsetX, offsetY, renderWidth: image.width * scale, renderHeight: image.height * scale });
       viewport.schedule();
       return;
@@ -371,9 +420,10 @@ document.addEventListener("DOMContentLoaded", function() {
     const marks = createRenderMarks(scale, offsetX, offsetY);
     renderedArtwork = {
       width, height, background, marks,
-      mask: hasTransparency ? image : null,
       offsetX, offsetY, renderWidth: image.width * scale, renderHeight: image.height * scale
     };
+    particles.reset(marks);
+    syncMouseInteraction();
     renderer.setScene(renderedArtwork);
     viewport.schedule();
   }
@@ -385,29 +435,15 @@ document.addEventListener("DOMContentLoaded", function() {
       const { width, height, background, marks } = renderedArtwork;
       let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`;
       svgContent += `<rect width="100%" height="100%" fill="${background}"/>`;
-      if (renderedArtwork.mask) {
-        const maskCanvas = document.createElement('canvas');
-        maskCanvas.width = image.width;
-        maskCanvas.height = image.height;
-        const maskContext = maskCanvas.getContext('2d');
-        maskContext.drawImage(image, 0, 0);
-        maskContext.globalCompositeOperation = 'source-in';
-        maskContext.fillStyle = inkLight;
-        maskContext.fillRect(0, 0, image.width, image.height);
-        const maskURL = maskCanvas.toDataURL('image/png');
-        maskCanvas.width = maskCanvas.height = 0;
-        const { offsetX, offsetY, renderWidth, renderHeight } = renderedArtwork;
-        svgContent += `<defs><mask id="source-alpha" maskUnits="userSpaceOnUse" x="0" y="0" width="${width}" height="${height}" style="mask-type:alpha"><image x="${offsetX}" y="${offsetY}" width="${renderWidth}" height="${renderHeight}" preserveAspectRatio="none" href="${maskURL}"/></mask></defs><g mask="url(#source-alpha)">`;
-      }
       marks.forEach(mark => {
         if (mark.vertices) {
           const points = mark.vertices.map(vertex => vertex.join(',')).join(' ');
-          svgContent += `<polygon points="${points}" fill="${mark.fillColor}" />`;
+          svgContent += `<polygon points="${points}" fill="${mark.fillColor}" fill-opacity="${mark.opacity}" />`;
         } else {
-          svgContent += `<circle cx="${mark.cx}" cy="${mark.cy}" r="${mark.radius}" fill="${mark.fillColor}" />`;
+          svgContent += `<circle cx="${mark.cx}" cy="${mark.cy}" r="${mark.radius}" fill="${mark.fillColor}" fill-opacity="${mark.opacity}" />`;
         }
       });
-      svgContent += renderedArtwork.mask ? '</g></svg>' : '</svg>';
+      svgContent += '</svg>';
       return svgContent;
   }
 

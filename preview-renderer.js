@@ -62,9 +62,9 @@
       }) : [];
     }
 
-    render(view) {
+    render(view, offsets = null) {
       if (this.gpu) {
-        this.gpu.render(view);
+        this.gpu.render(view, offsets);
         return;
       }
       const ctx = this.context;
@@ -90,16 +90,22 @@
         // Keep painter order so overlapping colored shapes match the SVG.
         for (let i = 0; i < scene.marks.length; i++) {
           const mark = scene.marks[i];
-          if (!isVisible(mark, bounds)) continue;
+          const dx = offsets ? offsets[i * 4] : 0, dy = offsets ? offsets[i * 4 + 1] : 0;
+          const cx = mark.cx + dx, cy = mark.cy + dy;
+          if (cx + mark.radius < bounds.left || cx - mark.radius > bounds.right ||
+              cy + mark.radius < bounds.top || cy - mark.radius > bounds.bottom) continue;
           if (mark.fillColor !== fillColor) {
             fillColor = mark.fillColor;
             ctx.fillStyle = fillColor;
           }
-          ctx.fill(this.paths[i]);
-        }
-        if (scene.mask) {
-          ctx.globalCompositeOperation = 'destination-in';
-          ctx.drawImage(scene.mask, scene.offsetX, scene.offsetY, scene.renderWidth, scene.renderHeight);
+          ctx.globalAlpha = mark.opacity ?? 1;
+          if (dx || dy) {
+            ctx.translate(dx, dy);
+            ctx.fill(this.paths[i]);
+            ctx.translate(-dx, -dy);
+          } else {
+            ctx.fill(this.paths[i]);
+          }
         }
       }
       ctx.restore();
