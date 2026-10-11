@@ -2,7 +2,25 @@
 
 ## by Prabin Pebam
 
-The **Stipple Art Generator** is an interactive tool that transforms an image into stipple art using a **weighted Voronoi stippling algorithm**. It allows you to control various parameters such as stipple count, iteration count, dot size, and colorization to generate custom stipple patterns.
+**Stipple Studio** transforms images into stipple art using a **weighted Voronoi
+stippling algorithm**. Create dot, square, triangle, or hexagon artwork, refine
+its distribution, explore it with a sharp zoomable preview, and export SVG or PNG.
+
+## Features
+
+- Compact, token-based controls with light/dark themes and a canvas-first layout.
+- Four shapes with fixed, random, or Voronoi-aligned orientations.
+- Large-image import with 1K / 2K / 4K working resolutions and browser-native codecs.
+- Source transparency preserved as per-mark opacity, without silhouette clipping.
+- Pixel-density-aware WebGL2 preview, with a Canvas 2D fallback and zoom/pan gestures.
+- Optional cursor repulsion, fluid-like agitation, and damped return to the artwork.
+- Real sand audio with overlapping crossfaded grains driven by particle movement.
+- Pinned generation controls and side-by-side SVG / PNG exports.
+
+**Defaults:** 40,000 marks, 10 refinement passes, Balanced 2K resolution, dots,
+and white-on-black paper. Original colors, Mouse interaction, and Sound are on.
+Audio requires an initial click/tap or keypress; reduced-motion preferences
+disable particle interaction.
 
 ![Stipple art examples](/images/stipple-art-examples.png "Stipple art examples")
 The studio interface supports light and dark themes, a responsive canvas workspace,
@@ -29,11 +47,13 @@ This project utilizes a **Voronoi-based stippling algorithm**, which distributes
    - The weight is determined by the brightness of the corresponding image region.
    - This step is repeated over multiple iterations to refine dot placement.
 4. **Rendering the Stipple Art:**
-   - The dots are drawn on a **HTML5 canvas**, with options for colorized dots based on the original image.
+   - Shapes are drawn on an HTML5 canvas using WebGL2 or Canvas 2D, with cached
+     vector geometry and colors sampled from the image.
 5. **Animation Mode (Optional):**
    - The stippling process can be animated in real-time, continuously adjusting dot positions.
-6. **Exporting as SVG:**
-   - Once the stipple art is generated, you can download it as an **SVG** file for scalable output.
+6. **Exporting:**
+   - Download SVG for scalable vector output or PNG for a raster image.
+     Both export the undisturbed artwork, not the zoomed or displaced preview.
 
 ---
 
@@ -47,7 +67,7 @@ The project is a static browser app with no build step:
   - **Canvas** for rendering stipple art.
   - **Control panel** for adjusting parameters like stipple count, dot size, and animation.
   - **File upload** functionality for selecting an image.
-  - **Download button** to export the stipple art as SVG.
+  - **Pinned footer** with SVG and PNG export buttons.
 
 ### 2. **stipple-art.js**
 - Implements the stippling algorithm using:
@@ -61,6 +81,7 @@ The project is a static browser app with no build step:
 - `renderStippleArt()` → Draws the stipple points onto the canvas.
 - `animateVoronoi()` → Continuously animates the stippling process.
 - `downloadSVG()` → Converts stipple art to an SVG format for download.
+- `downloadPNG()` → Renders the same full artwork snapshot as PNG.
 - `getBrightness()` → Extracts brightness values from the uploaded image.
 - `computeWeightedCentroid()` → Determines the best position for a stipple point within its Voronoi cell.
 
@@ -121,6 +142,24 @@ The project is a static browser app with no build step:
 - Uses Blob URLs or asynchronous bitmap decoding rather than base64 copies.
 - Produces one bounded working canvas and reusable RGBA pixel buffer.
 - Has dependency-free import tests in `image-import.test.js`.
+
+### 8. **preview-renderer.js** and **preview-gpu.js**
+- Cache artwork paths/instance data and draw the visible shapes at the current zoom.
+- Use WebGL2 instancing when available, otherwise Canvas 2D.
+- Preserve per-mark opacity, painter order, and viewport-sized backing allocation.
+- Report graphics context loss and redraw after restoration.
+
+### 9. **particle-field.js**
+- Stores transient displacement and velocity separately from original artwork.
+- Applies cursor repulsion, agitation, damping, and spring return with fixed steps.
+- Reports visible particle speed and position to the sound system.
+
+### 10. **particle-audio.js** and **audio/**
+- Decode the locally bundled CC0 sand recording and schedule overlapping grains.
+- Map particle speed to volume, filter brightness, and playback rate.
+- Pan toward moving particles; mute at rest and suspend when Sound is switched off.
+- Use a low-pass filter to retain more of the sample and compression to tame peaks.
+- Record the source and license in [audio/LICENSE.txt](audio/LICENSE.txt).
 
 ## Large images and image formats
 
@@ -203,7 +242,7 @@ particle location. Returning particles keep rustling after the cursor leaves;
 settled particles are silent. Sound mutes on blur, hidden tabs, disabled interaction,
 and scene resets. It is not included in exports.
 
-Enable **Mouse interaction** in Appearance, then move the mouse over generated
+With **Mouse interaction** enabled in Appearance, move the mouse over generated
 artwork. Nearby shapes repel and swirl in the cursor's wake, coast, and slowly
 return to their original positions when the cursor moves away. This is a
 preview-only effect: SVG and PNG exports always use the undisturbed artwork.
@@ -298,13 +337,13 @@ point distribution. SVG export uses the exact geometry and colors in the preview
 
 Polygon shapes support three orientation modes:
 
-- **Same angle for all**: the shared-angle slider rotates every shape by 0-360
+- **Fixed**: the Angle slider rotates every shape by 0-360
   degrees clockwise. At zero, squares are upright, triangles point up, and
   hexagons have a vertex pointing right.
-- **Random orientation**: each mark gets a rotation from a separate seeded random
+- **Random**: each mark gets a rotation from a separate seeded random
   sequence at generation time. Its rotation stays fixed through refinement,
   appearance changes, and export. The random seed sets the starting rotations.
-- **Follow Voronoi pattern**: squares align an edge, triangles point a vertex,
+- **Voronoi**: squares align an edge, triangles point a vertex,
   and hexagons point a vertex along the longest axis of their current Voronoi cell.
   The axis is recalculated as points move during refinement or animation and cached
   for subsequent appearance changes. Symmetric or degenerate cells use a neutral
@@ -331,6 +370,8 @@ Bootstrap and jQuery are not required.
 - **JavaScript (ES6+)** → Main programming language.
 - **Custom token-based CSS components** → Responsive UI and light/dark themes.
 - **Canvas API** → Rendering stipple art dynamically.
+- **WebGL2** → Batched, sharp polygon and dot previews.
+- **Web Audio API** → Motion-driven granular playback of a real sand recording.
 - **D3.js (d3-delaunay, d3-polygon)** → Voronoi diagram and polygon calculations.
 - **Monte Carlo Sampling** → Used for computing weighted centroids.
 
@@ -344,12 +385,15 @@ the full artwork at logical preview dimensions, independent of zoom and display
 density, using the same geometry, colors, and per-mark opacity as SVG.
 
 1. Upload an image.
-2. Adjust parameters like stipple count, iteration count, dot size, and colorization.
-3. Click **Generate** to create the stipple art.
-4. (Optional) Enable **Animate Voronoi** to see the process in real-time.
+2. Adjust Marks, Refinement, Seed, shape, Radius, and Ink & paper.
+3. Click **Generate stipple art**. The initial preview is refined over 10 passes
+   by default, with progress shown in the sidebar.
+4. (Optional) Enable **Animate** under Advanced to continuously refine the pattern.
 5. Use **Stop animation** to keep the current pattern.
 6. Fine-tune shape, orientation, radius, variation, or original colors on the preview.
-7. Download the final result with **Export SVG**.
+7. Move the mouse over the artwork to scatter particles and hear the sand recording.
+   Switch off Mouse interaction or Sound if desired.
+8. Download the final result with **Export SVG** or **Export PNG**.
 
 Generation controls are locked while rendering to prevent overlapping operations.
 Uploading a new image resets the artwork and export state. Unsupported or unreadable
@@ -359,10 +403,12 @@ change ink/paper and try again.
 
 ## Local development
 
-Open `index.html` in a browser, or serve this directory using an existing static
-server, for example `python -m http.server 5173`, then visit
-`http://localhost:5173`. D3's drawing libraries require an internet connection.
-No package installation is needed.
+Serve this directory using an existing static server, for example
+`python -m http.server 5173`, then visit `http://localhost:5173`.
+Opening `index.html` directly can work for artwork, but browser restrictions on
+`file:` fetches can prevent the audio recording from loading. D3's drawing
+libraries require an internet connection; the sand recording is served locally.
+No package installation or build step is needed.
 
 JavaScript syntax can be checked with:
 
