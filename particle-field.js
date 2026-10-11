@@ -16,6 +16,7 @@
       this.accumulator = 0;
       this.time = 0;
       this.active = false;
+      this.motion = { speed: 0, x: 0 };
     }
 
     setEnabled(enabled) {
@@ -63,6 +64,7 @@
       const pointerY = pointer ? (pointer.y - view.y) / zoom : 0;
       const logicalRadius = radius / zoom;
       let moving = false;
+      let speedSum = 0, positionSum = 0, movingCount = 0;
       this.time += STEP;
       for (let i = 0; i < this.marks.length; i++) {
         const mark = this.marks[i], index = i * 4;
@@ -101,6 +103,14 @@
           x = y = vx = vy = 0;
         } else {
           moving = true;
+          const screenX = (mark.cx + x) * zoom + view.x;
+          const screenY = (mark.cy + y) * zoom + view.y;
+          if (screenX >= 0 && screenX <= view.width && screenY >= 0 && screenY <= view.height) {
+            const speed = Math.hypot(vx, vy) * zoom;
+            speedSum += speed;
+            positionSum += screenX * speed;
+            movingCount++;
+          }
         }
         this.offsets[index] = x;
         this.offsets[index + 1] = y;
@@ -112,6 +122,10 @@
         pointer.vy *= Math.exp(-10 * STEP);
       }
       this.active = moving;
+      this.motion = {
+        speed: movingCount ? speedSum / Math.max(20, movingCount) : 0,
+        x: speedSum ? positionSum / speedSum : 0
+      };
       if (!moving) {
         this.lastTime = null;
         this.accumulator = 0;

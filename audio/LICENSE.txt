@@ -1,0 +1,10 @@
+Sand recording: SAND POUR.wav
+Creator: nicoproson
+Source: https://freesound.org/people/nicoproson/sounds/627070/
+Bundled preview: https://cdn.freesound.org/previews/627/627070_457982-lq.mp3
+License: Creative Commons CC0 1.0 Universal
+License text: https://creativecommons.org/publicdomain/zero/1.0/
+Verified on the source sound page on 2026-10-12.
+
+The recording is used locally as overlapping windowed grains. Its original
+filename on Freesound is SAND POUR.wav; the bundled asset is the MP3 preview.

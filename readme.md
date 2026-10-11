@@ -185,6 +185,24 @@ No files are uploaded, and no additional codec libraries or services are require
 
 ## Mouse interaction
 
+The **Sound** switch uses a real [sand-pouring recording by nicoproson](https://freesound.org/people/nicoproson/sounds/627070/),
+bundled as `audio/sand-pour.mp3` under CC0 (see `audio/LICENSE.txt`).
+Web Audio granular playback selects energetic portions of the recording and
+overlaps three short grains with Hann envelopes to avoid abrupt starts/stops
+and obvious loop seams. A 40ms look-ahead scheduler schedules grains on the audio
+clock rather than relying on animation-frame timing. Playback rate, volume,
+filter brightness, and stereo placement respond to actual particle motion.
+The recording loads locally on the first audio-unlocking gesture, with explicit
+load/decode errors and no synthesized fallback. Serve the app over HTTP to use
+audio; browsers may block fetching the recording from a `file:` page.
+Original colors, Mouse interaction, and Sound are enabled by default.
+Audio is unlocked on the first click/tap or keypress (browser autoplay rules).
+Volume and filter brightness
+follow visible particle speed, while stereo position follows the speed-weighted
+particle location. Returning particles keep rustling after the cursor leaves;
+settled particles are silent. Sound mutes on blur, hidden tabs, disabled interaction,
+and scene resets. It is not included in exports.
+
 Enable **Mouse interaction** in Appearance, then move the mouse over generated
 artwork. Nearby shapes repel and swirl in the cursor's wake, coast, and slowly
 return to their original positions when the cursor moves away. This is a
@@ -357,7 +375,8 @@ node --check image-import.js
 node --check preview-renderer.js
 node --check preview-gpu.js
 node --check particle-field.js
-node --test shape-geometry.test.js preview-viewport.test.js preview-renderer.test.js image-import.test.js particle-field.test.js
+node --check particle-audio.js
+node --test shape-geometry.test.js preview-viewport.test.js preview-renderer.test.js image-import.test.js particle-field.test.js particle-audio.test.js
 ```
 
 Enjoy creating beautiful stipple art!

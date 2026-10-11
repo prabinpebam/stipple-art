@@ -149,8 +149,9 @@
             </div>
             <p class="field-hint">Paper color is independent of the app theme.</p>
           </div>
-          <label class="switch-row" for="colorizeDots"><span><strong>Original colors</strong><span>Sample color from your image</span></span><input class="switch" type="checkbox" role="switch" id="colorizeDots"></label>
-          <label class="switch-row interaction-toggle" for="mouseInteraction" title="Move over the artwork to scatter shapes. They return when the cursor moves away. Preview only."><span><strong>Mouse interaction</strong></span><input class="switch" type="checkbox" role="switch" id="mouseInteraction"></label>
+          <label class="switch-row" for="colorizeDots"><span><strong>Original colors</strong><span>Sample color from your image</span></span><input class="switch" type="checkbox" role="switch" id="colorizeDots" checked></label>
+          <label class="switch-row interaction-toggle" for="mouseInteraction" title="Move over the artwork to scatter shapes. They return when the cursor moves away. Preview only."><span><strong>Mouse interaction</strong></span><input class="switch" type="checkbox" role="switch" id="mouseInteraction" checked></label>
+          <label class="switch-row" for="particleSound" title="Sand-like sound follows particle movement"><span><strong>Sound</strong></span><input class="switch" type="checkbox" role="switch" id="particleSound" checked></label>
         </fieldset>
 
         <details class="control-section advanced-settings">
@@ -195,6 +196,7 @@
   <script src="preview-renderer.js"></script>
   <script src="preview-viewport.js"></script>
   <script src="particle-field.js"></script>
+  <script src="particle-audio.js"></script>
   <script src="image-import.js"></script>
   <script src="stipple-art.js"></script>
 </body>

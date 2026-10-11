@@ -15,8 +15,11 @@ document.addEventListener("DOMContentLoaded", function() {
   const progressValue = document.getElementById('progressValue');
   const stage = document.getElementById('renderArea');
   const particles = new ParticleField();
+  const particleAudio = new ParticleAudio();
+  let audioFocused = true;
   const viewport = new PreviewViewport(stage, canvas, (view, timestamp) => {
-    const animate = particles.advance(timestamp, view);
+    const animate = particles.advance(timestamp, { ...view, width: stage.clientWidth, height: stage.clientHeight });
+    if (audioFocused) particleAudio.update(particles.motion, stage.clientWidth);
     renderer.render(view, particles.enabled ? particles.offsets : null);
     return animate;
   });
@@ -44,6 +47,47 @@ document.addEventListener("DOMContentLoaded", function() {
   const colorizeDotsSwitch = document.getElementById('colorizeDots');
   const animateVoronoiSwitch = document.getElementById('animateVoronoi');
   const mouseInteractionSwitch = document.getElementById('mouseInteraction');
+  const soundSwitch = document.getElementById('particleSound');
+  let audioUnlocking = false;
+  async function unlockParticleSound() {
+    if (!soundSwitch.checked || audioUnlocking ||
+        (particleAudio.enabled && particleAudio.context.state === 'running')) return;
+    audioUnlocking = true;
+    try {
+      await particleAudio.enable();
+      viewport.schedule();
+    } catch (error) {
+      console.error('Particle sound:', error);
+      soundSwitch.checked = false;
+      particleAudio.enabled = false;
+      particleAudio.silence();
+      showStatus(error.message, 'error');
+    } finally {
+      audioUnlocking = false;
+    }
+  }
+  // Unlock default-on audio through an actual gesture, not autoplay.
+  document.addEventListener('pointerdown', event => {
+    if (event.target !== soundSwitch) unlockParticleSound();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.target !== soundSwitch) unlockParticleSound();
+  });
+  soundSwitch.addEventListener('change', async () => {
+    try {
+      if (soundSwitch.checked) {
+        await unlockParticleSound();
+      } else {
+        await particleAudio.disable();
+      }
+    } catch (error) {
+      console.error('Particle sound:', error);
+      soundSwitch.checked = false;
+      particleAudio.enabled = false;
+      particleAudio.silence();
+      showStatus(error.message, 'error');
+    }
+  });
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const shapeInputs = settingsForm.querySelectorAll('input[name="shapeOption"]');
   const orientationInputs = settingsForm.querySelectorAll('input[name="orientationOption"]');
@@ -69,6 +113,7 @@ document.addEventListener("DOMContentLoaded", function() {
       'Move over the artwork to scatter shapes. Preview only.';
     const enabled = mouseInteractionSwitch.checked && !busyMode && !reducedMotion.matches && Boolean(renderedArtwork);
     if (particles.enabled !== enabled) particles.setEnabled(enabled);
+    if (!enabled) particleAudio.silence();
   }
   mouseInteractionSwitch.addEventListener('change', () => {
     syncMouseInteraction();
@@ -88,9 +133,15 @@ document.addEventListener("DOMContentLoaded", function() {
     canvas.addEventListener(type, () => particles.leave(), { passive: true });
   });
   stage.addEventListener('keydown', () => particles.leave());
-  window.addEventListener('blur', () => particles.leave());
+  window.addEventListener('blur', () => {
+    audioFocused = false;
+    particles.leave();
+    particleAudio.silence();
+  });
+  window.addEventListener('focus', () => { audioFocused = true; });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
+      particleAudio.silence();
       particles.reset(particles.marks);
       if (viewport.frame !== null) cancelAnimationFrame(viewport.frame);
       viewport.frame = null;
