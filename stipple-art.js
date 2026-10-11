@@ -1,7 +1,6 @@
 // stipple-art.js
 // This script implements a weighted Voronoi stippling algorithm with adjustable parameters,
 // optional dot colorization, continuous animation, and drag-and-drop image upload.
-// The progress bar is now overlaid in the center of the canvas.
 document.addEventListener("DOMContentLoaded", function() {
   const canvas = document.getElementById('stippleCanvas');
   const ctx = canvas.getContext('2d');
@@ -11,6 +10,16 @@ document.addEventListener("DOMContentLoaded", function() {
   const downloadSVGButton = document.getElementById('downloadSVGButton');
   const progressBarContainer = document.getElementById('progressBarContainer');
   const progressBar = document.getElementById('progressBar');
+  const progressValue = document.getElementById('progressValue');
+  const stage = document.getElementById('renderArea');
+  const settingsForm = document.getElementById('settingsForm');
+  const stopButton = document.getElementById('stopButton');
+  const status = document.getElementById('studioStatus');
+  const artworkTokens = getComputedStyle(document.documentElement);
+  const inkLight = artworkTokens.getPropertyValue('--cp-ink-light').trim();
+  const inkDark = artworkTokens.getPropertyValue('--cp-ink-dark').trim();
+  const paperLight = artworkTokens.getPropertyValue('--cp-paper-light').trim();
+  const paperDark = artworkTokens.getPropertyValue('--cp-paper-dark').trim();
 
   // Parameter controls.
   const stippleCountInput = document.getElementById('stippleCount');
@@ -28,16 +37,43 @@ document.addEventListener("DOMContentLoaded", function() {
   let stipplePoints = []; // Array of { x, y } in image coordinate space.
   let globalImgData = null; // Full-resolution image pixel data.
   let animationFrameID = null;
+  let busyMode = null;
+
+  function showStatus(message, tone = 'normal') {
+    status.textContent = message;
+    status.dataset.tone = tone;
+  }
+
+  function setBusy(mode) {
+    busyMode = mode;
+    settingsForm.querySelectorAll('input').forEach(input => { input.disabled = Boolean(mode); });
+    generateButton.disabled = Boolean(mode) || !image;
+    downloadSVGButton.disabled = mode === 'loading' || mode === 'static' || !stipplePoints.length;
+    stopButton.hidden = mode !== 'animation';
+    stage.classList.toggle('is-busy', Boolean(mode));
+    stage.setAttribute('aria-busy', String(Boolean(mode)));
+    document.getElementById('previewState').textContent = mode === 'loading' ? 'Loading image' :
+      mode === 'static' ? 'Refining dots' : mode === 'animation' ? 'Animating' :
+      stipplePoints.length ? `${stipplePoints.length.toLocaleString()} dots` : image ? 'Image ready' : 'No image yet';
+  }
+
+  function reportError(error) {
+    console.error('Stipple Studio:', error);
+    progressBarContainer.hidden = true;
+    imageUpload.value = '';
+    renderStippleArt();
+    setBusy(null);
+    showStatus(error.message, 'error');
+  }
   
   // Resize canvas to fill renderArea.
   function resizeCanvas() {
-    const renderArea = document.getElementById('renderArea');
-    canvas.width = renderArea.clientWidth;
-    canvas.height = renderArea.clientHeight;
+    canvas.width = stage.clientWidth;
+    canvas.height = stage.clientHeight;
     renderStippleArt();
   }
   resizeCanvas();
-  window.addEventListener('resize', resizeCanvas);
+  new ResizeObserver(resizeCanvas).observe(stage);
   
   // Seedable RNG.
   function mulberry32(a) {
@@ -52,19 +88,21 @@ document.addEventListener("DOMContentLoaded", function() {
   function updateProgress(percent) {
     progressBar.style.width = percent + '%';
     progressBar.setAttribute('aria-valuenow', percent);
-    progressBar.textContent = percent + '%';
+    progressValue.textContent = percent + '%';
   }
   
   // Get brightness from imageData.
   function getBrightness(x, y, imageData, width) {
-    const idx = (Math.floor(y) * width + Math.floor(x)) * 4;
+    const height = imageData.length / (width * 4);
+    const idx = (Math.min(height - 1, Math.max(0, Math.floor(y))) * width + Math.min(width - 1, Math.max(0, Math.floor(x)))) * 4;
     const r = imageData[idx], g = imageData[idx+1], b = imageData[idx+2];
     return 0.2126 * r + 0.7152 * g + 0.0722 * b;
   }
   
   // Get color from imageData.
   function getColor(x, y, imageData, width) {
-    const idx = (Math.floor(y) * width + Math.floor(x)) * 4;
+    const height = imageData.length / (width * 4);
+    const idx = (Math.min(height - 1, Math.max(0, Math.floor(y))) * width + Math.min(width - 1, Math.max(0, Math.floor(x)))) * 4;
     return { r: imageData[idx], g: imageData[idx+1], b: imageData[idx+2] };
   }
   
@@ -88,145 +126,116 @@ document.addEventListener("DOMContentLoaded", function() {
     return sumW === 0 ? polygon[0] : [sumX / sumW, sumY / sumW];
   }
   
-  // Static generation of stipple art.
-  function generateStippleArt(seed) {
-    return new Promise((resolve, reject) => {
-      try {
-        if (!image) throw new Error("No image loaded");
-        const rng = mulberry32(seed);
-        const desiredCount = parseInt(stippleCountInput.value);
-        const iterations = parseInt(iterationCountSlider.value);
-        const sampleCount = parseInt(sampleCountSlider.value);
-        const whiteCutoff = parseFloat(whiteCutoffSlider.value);
-        currentStippleColor = document.querySelector('input[name="colorOption"]:checked').value;
-        
-        const offCanvas = document.createElement('canvas');
-        offCanvas.width = image.width;
-        offCanvas.height = image.height;
-        const offCtx = offCanvas.getContext('2d');
-        offCtx.drawImage(image, 0, 0);
-        globalImgData = offCtx.getImageData(0, 0, offCanvas.width, offCanvas.height).data;
-        
-        stipplePoints = [];
-        while (stipplePoints.length < desiredCount) {
-          const x = rng() * image.width;
-          const y = rng() * image.height;
-          let brightness = getBrightness(x, y, globalImgData, image.width);
-          let weight = (currentStippleColor === 'white') ? (brightness/255) : (1 - brightness/255);
-          if (weight > whiteCutoff && rng() < weight) {
-            stipplePoints.push({ x, y });
-          }
-        }
-        while (stipplePoints.length < desiredCount) {
-          stipplePoints.push({ x: rng() * image.width, y: rng() * image.height });
-        }
-        
-        let currentIteration = 0;
-        progressBarContainer.style.display = 'block';
-        function iterate() {
-          currentIteration++;
-          const pointsArr = stipplePoints.map(pt => [pt.x, pt.y]);
-          const delaunay = d3.Delaunay.from(pointsArr);
-          const voronoi = delaunay.voronoi([0, 0, image.width, image.height]);
-          let newPoints = [];
-          for (let i = 0; i < stipplePoints.length; i++) {
-            const cell = voronoi.cellPolygon(i);
-            if (!cell) {
-              newPoints.push(stipplePoints[i]);
-            } else {
-              const [cx, cy] = computeWeightedCentroid(cell, globalImgData, image.width, sampleCount);
-              newPoints.push({ x: cx, y: cy });
-            }
-          }
-          stipplePoints = newPoints;
-          updateProgress(Math.floor((currentIteration / iterations) * 100));
-          if (currentIteration < iterations) {
-            requestAnimationFrame(iterate);
-          } else {
-            updateProgress(100);
-            setTimeout(() => {
-              progressBarContainer.style.display = 'none';
-              resolve();
-            }, 500);
-          }
-        }
-        iterate();
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }
-  
-  // Animation mode: continuously iterate at ~12 fps.
-  function animateVoronoi(seed) {
-    if (!image) { alert("Please upload an image first."); return; }
-    if (animationFrameID) cancelAnimationFrame(animationFrameID);
+  function initializePoints(seed) {
+    if (!window.d3 || !d3.Delaunay || !d3.polygonContains) {
+      throw new Error('The drawing libraries could not load. Check your connection and reload the page.');
+    }
     const rng = mulberry32(seed);
-    const desiredCount = parseInt(stippleCountInput.value);
-    const sampleCount = parseInt(sampleCountSlider.value);
+    const desiredCount = Number(stippleCountInput.value);
+    if (!Number.isSafeInteger(desiredCount) || desiredCount < 1) {
+      throw new Error('Enter a positive whole number of dots.');
+    }
     const whiteCutoff = parseFloat(whiteCutoffSlider.value);
+    if (whiteCutoff >= 1) {
+      throw new Error('Lower the brightness cutoff below 1 to allow dots to be placed.');
+    }
     currentStippleColor = document.querySelector('input[name="colorOption"]:checked').value;
-    
     const offCanvas = document.createElement('canvas');
     offCanvas.width = image.width;
     offCanvas.height = image.height;
     const offCtx = offCanvas.getContext('2d');
     offCtx.drawImage(image, 0, 0);
     globalImgData = offCtx.getImageData(0, 0, offCanvas.width, offCanvas.height).data;
-    
-    stipplePoints = [];
-    while (stipplePoints.length < desiredCount) {
+
+    // Bound rejection sampling so blank images or a cutoff of 1 cannot freeze the UI.
+    const points = [];
+    const maxAttempts = desiredCount * 100;
+    for (let attempts = 0; points.length < desiredCount && attempts < maxAttempts; attempts++) {
       const x = rng() * image.width;
       const y = rng() * image.height;
-      let brightness = getBrightness(x, y, globalImgData, image.width);
-      let weight = (currentStippleColor === 'white') ? (brightness/255) : (1 - brightness/255);
+      const brightness = getBrightness(x, y, globalImgData, image.width);
+      const weight = currentStippleColor === 'white' ? brightness / 255 : 1 - brightness / 255;
       if (weight > whiteCutoff && rng() < weight) {
-        stipplePoints.push({ x, y });
+        points.push({ x, y });
       }
     }
-    while (stipplePoints.length < desiredCount) {
-      stipplePoints.push({ x: rng() * image.width, y: rng() * image.height });
+    if (points.length < desiredCount) {
+      stipplePoints = [];
+      throw new Error('Not enough image contrast to place the dots. Lower the brightness cutoff or switch ink & paper.');
     }
+    stipplePoints = points;
+  }
+
+  function refinePoints(sampleCount) {
+    const delaunay = d3.Delaunay.from(stipplePoints.map(pt => [pt.x, pt.y]));
+    const voronoi = delaunay.voronoi([0, 0, image.width, image.height]);
+    stipplePoints = stipplePoints.map((pt, i) => {
+      const cell = voronoi.cellPolygon(i);
+      if (!cell) return pt;
+      const [x, y] = computeWeightedCentroid(cell, globalImgData, image.width, sampleCount);
+      return { x, y };
+    });
+  }
+
+  function generateStippleArt(seed) {
+    return new Promise((resolve, reject) => {
+      const iterations = Number(iterationCountSlider.value);
+      const sampleCount = Number(sampleCountSlider.value);
+      let currentIteration = 0;
+      updateProgress(0);
+      progressBarContainer.hidden = false;
+      function iterate() {
+        try {
+          if (currentIteration === 0) initializePoints(seed);
+          refinePoints(sampleCount);
+          currentIteration++;
+          updateProgress(Math.floor(currentIteration / iterations * 100));
+          renderStippleArt();
+          if (currentIteration < iterations) {
+            requestAnimationFrame(iterate);
+          } else {
+            progressBarContainer.hidden = true;
+            resolve();
+          }
+        } catch (error) {
+          reject(error);
+        }
+      }
+      requestAnimationFrame(iterate);
+    });
+  }
+
+  // Animation mode: continuously iterate at ~12 fps.
+  function animateVoronoi(seed) {
+    initializePoints(seed);
+    renderStippleArt();
+    setBusy('animation');
+    const sampleCount = Number(sampleCountSlider.value);
     
     let lastIterationTime = 0;
     function animateIteration(timestamp) {
-      if (!lastIterationTime) lastIterationTime = timestamp;
-      if (timestamp - lastIterationTime >= 80) {
-        const pointsArr = stipplePoints.map(pt => [pt.x, pt.y]);
-        const delaunay = d3.Delaunay.from(pointsArr);
-        const voronoi = delaunay.voronoi([0, 0, image.width, image.height]);
-        let newPoints = [];
-        for (let i = 0; i < stipplePoints.length; i++) {
-          const cell = voronoi.cellPolygon(i);
-          if (!cell) {
-            newPoints.push(stipplePoints[i]);
-          } else {
-            const [cx, cy] = computeWeightedCentroid(cell, globalImgData, image.width, sampleCount);
-            newPoints.push({ x: cx, y: cy });
-          }
+      try {
+        if (!lastIterationTime) lastIterationTime = timestamp;
+        if (timestamp - lastIterationTime >= 80) {
+          refinePoints(sampleCount);
+          renderStippleArt();
+          lastIterationTime = timestamp;
         }
-        stipplePoints = newPoints;
-        renderStippleArt();
-        lastIterationTime = timestamp;
+        animationFrameID = requestAnimationFrame(animateIteration);
+      } catch (error) {
+        animationFrameID = null;
+        reportError(error);
       }
-      animationFrameID = requestAnimationFrame(animateIteration);
     }
     animationFrameID = requestAnimationFrame(animateIteration);
   }
   
   // Render stipple art.
-  // If no image is loaded, show instructional text.
   // If image exists but stipple art is not generated, show the preview.
   function renderStippleArt() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    document.getElementById('emptyState').hidden = Boolean(image);
     if (!image) {
-      ctx.fillStyle = "#999";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.font = "24px sans-serif";
-      ctx.fillText("Upload an image to get started", canvas.width/2, canvas.height/2 - 20);
-      ctx.font = "18px sans-serif";
-      ctx.fillText("Drag and drop image here to upload", canvas.width/2, canvas.height/2 + 20);
       return;
     }
     if (stipplePoints.length === 0) {
@@ -245,7 +254,7 @@ document.addEventListener("DOMContentLoaded", function() {
     const offsetX = (canvas.width - renderWidth) / 2;
     const offsetY = (canvas.height - renderHeight) / 2;
     
-    ctx.fillStyle = (currentStippleColor === 'white') ? "#333" : "white";
+    ctx.fillStyle = currentStippleColor === 'white' ? paperDark : paperLight;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     const minSize = parseFloat(minDotSizeSlider.value);
@@ -282,10 +291,10 @@ document.addEventListener("DOMContentLoaded", function() {
           const avgB = Math.round(sumB / count);
           fillColor = `rgb(${avgR}, ${avgG}, ${avgB})`;
         } else {
-          fillColor = (currentStippleColor === 'white') ? 'white' : 'black';
+          fillColor = currentStippleColor === 'white' ? inkLight : inkDark;
         }
       } else {
-        fillColor = (currentStippleColor === 'white') ? 'white' : 'black';
+        fillColor = currentStippleColor === 'white' ? inkLight : inkDark;
       }
       ctx.beginPath();
       ctx.arc(cx, cy, dotRadius, 0, 2*Math.PI);
@@ -297,7 +306,9 @@ document.addEventListener("DOMContentLoaded", function() {
   // Download as SVG.
   function downloadSVG() {
     try {
-      if (!stipplePoints.length || !globalImgData) { alert("No stipple art generated to download."); return; }
+      if (!stipplePoints.length || !globalImgData) {
+        throw new Error('Generate stipple art before exporting.');
+      }
       const scale = Math.min(canvas.width / image.width, canvas.height / image.height);
       const renderWidth = image.width * scale;
       const renderHeight = image.height * scale;
@@ -309,7 +320,7 @@ document.addEventListener("DOMContentLoaded", function() {
       const colorize = colorizeDotsSwitch.checked;
       
       let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${canvas.width}" height="${canvas.height}" viewBox="0 0 ${canvas.width} ${canvas.height}">`;
-      svgContent += `<rect width="100%" height="100%" fill="${(currentStippleColor==='white')?'#333':'white'}"/>`;
+      svgContent += `<rect width="100%" height="100%" fill="${currentStippleColor === 'white' ? paperDark : paperLight}"/>`;
       stipplePoints.forEach(pt => {
         let brightness = getBrightness(pt.x, pt.y, globalImgData, image.width);
         const norm = (currentStippleColor === 'white') ? (brightness/255) : (1 - brightness/255);
@@ -340,10 +351,10 @@ document.addEventListener("DOMContentLoaded", function() {
             const avgB = Math.round(sumB / count);
             fillColor = `rgb(${avgR}, ${avgG}, ${avgB})`;
           } else {
-            fillColor = (currentStippleColor === 'white') ? 'white' : 'black';
+            fillColor = currentStippleColor === 'white' ? inkLight : inkDark;
           }
         } else {
-          fillColor = (currentStippleColor === 'white') ? 'white' : 'black';
+          fillColor = currentStippleColor === 'white' ? inkLight : inkDark;
         }
         svgContent += `<circle cx="${cx}" cy="${cy}" r="${dotRadius}" fill="${fillColor}" />`;
       });
@@ -358,24 +369,45 @@ document.addEventListener("DOMContentLoaded", function() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      showStatus('SVG exported. Your artwork is ready for any size.');
     } catch (error) {
       console.error("Error in downloading SVG:", error);
+      showStatus(error.message, 'error');
     }
   }
   
   // Handle image upload and drag-and-drop.
   function handleImageFile(file) {
-    stipplePoints = [];
-    globalImgData = null;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (busyMode) {
+      showStatus('Finish generation or stop the animation before replacing your image.', 'error');
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      showStatus('Choose a supported image file, such as PNG, JPEG, or WebP.', 'error');
+      return;
+    }
+    setBusy('loading');
+    showStatus('Loading your image...');
     const reader = new FileReader();
+    reader.onerror = () => reportError(new Error('The image could not be read. Try choosing it again.'));
     reader.onload = function(event) {
-      image = new Image();
-      image.onload = function() {
+      const nextImage = new Image();
+      nextImage.onerror = () => reportError(new Error('This image could not be decoded. Try a PNG, JPEG, or WebP image.'));
+      nextImage.onload = function() {
+        image = nextImage;
         stipplePoints = [];
+        globalImgData = null;
+        document.getElementById('imageFileName').textContent = file.name;
+        document.getElementById('imageFileName').title = file.name;
+        document.getElementById('uploadHint').textContent = 'Click to replace your image';
+        document.getElementById('previewTitle').textContent = file.name;
+        document.getElementById('imageDimensions').textContent = `${image.width.toLocaleString()} x ${image.height.toLocaleString()} px`;
+        imageUpload.value = '';
         renderStippleArt();
+        setBusy(null);
+        showStatus('Image ready. Adjust the details, then generate.');
       };
-      image.src = event.target.result;
+      nextImage.src = event.target.result;
     };
     reader.readAsDataURL(file);
   }
@@ -385,28 +417,57 @@ document.addEventListener("DOMContentLoaded", function() {
     if (file) handleImageFile(file);
   });
   
-  canvas.addEventListener('dragover', function(e) {
-    e.preventDefault();
-  });
-  canvas.addEventListener('drop', function(e) {
+  stage.addEventListener('drop', function(e) {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
     if (file) handleImageFile(file);
   });
   
-  // Generate button event.
-  generateButton.addEventListener('click', function() {
-    const seed = parseInt(randomSeedInput.value) || 42;
-    if (!image) { alert("Please upload an image first."); return; }
-    if (animateVoronoiSwitch.checked) {
-      if (animationFrameID) cancelAnimationFrame(animationFrameID);
-      animateVoronoi(seed);
-    } else {
-      if (animationFrameID) { cancelAnimationFrame(animationFrameID); animationFrameID = null; }
-      generateStippleArt(seed)
-        .then(() => { renderStippleArt(); })
-        .catch(error => { console.error("Generation error:", error); alert("Error: " + error.message); });
+  settingsForm.addEventListener('submit', function(event) {
+    event.preventDefault();
+    if (busyMode) return;
+    if (!image) { showStatus('Choose an image to get started.', 'error'); return; }
+    if (!settingsForm.reportValidity()) return;
+    const seed = Number(randomSeedInput.value);
+    if (!Number.isSafeInteger(seed)) {
+      showStatus('Enter a whole-number seed within the safe integer range.', 'error');
+      return;
     }
+    if (animateVoronoiSwitch.checked) {
+      try {
+        animateVoronoi(seed);
+        showStatus('Your pattern is evolving. Stop when it feels right.');
+      } catch (error) {
+        reportError(error);
+      }
+    } else {
+      setBusy('static');
+      showStatus('Refining your dots...');
+      generateStippleArt(seed)
+        .then(() => {
+          setBusy(null);
+          showStatus('Artwork ready. Fine-tune the appearance or export your SVG.');
+        })
+        .catch(reportError);
+    }
+  });
+
+  stopButton.addEventListener('click', () => {
+    if (animationFrameID) cancelAnimationFrame(animationFrameID);
+    animationFrameID = null;
+    setBusy(null);
+    showStatus('Animation stopped. Your artwork is ready to export.');
+  });
+
+  [minDotSizeSlider, dotSizeRangeSlider, colorizeDotsSwitch].forEach(input => {
+    input.addEventListener('input', renderStippleArt);
+  });
+  settingsForm.querySelectorAll('input[name="colorOption"]').forEach(input => {
+    input.addEventListener('change', () => {
+      currentStippleColor = input.value;
+      renderStippleArt();
+      if (stipplePoints.length) showStatus('Ink updated. Generate again to redistribute the dots for this paper.');
+    });
   });
   
   // Download SVG event.
