@@ -70,6 +70,25 @@ The project is a static browser app with no build step:
 - Defines reusable buttons, fields, sliders, switches, segmented controls,
   upload cards, badges, progress cards, and panel components.
 - Adapts from a canvas-and-sidebar desktop layout to a stacked mobile layout.
+- Keeps the desktop preview nearly edge-to-edge and full-height. Branding, theme,
+  introduction, privacy information, navigation help, and generation progress live
+  in the side panel; only image status, a compact resolution state, and zoom
+  controls surround the canvas.
+- Uses compact property-panel spacing, inline numeric fields, and single-row
+  shape/orientation pickers. Routine hints are not shown in the sidebar; detailed
+  image information remains in the resolution popover. Touch controls retain
+  larger targets.
+- Desktop scrolling is confined to the settings panel; the canvas flexes to the
+  viewport height without forcing body overflow when settings or zoom change.
+  The stacked mobile layout retains normal page scrolling.
+- Slider rows reserve separate label, numeric-value/unit, and slider columns,
+  keeping row dimensions stable throughout each control's value range.
+- Proximity spacing uses 4px between a heading and its control, 8px between
+  related rows, 12px between independent fields, and 16px between property groups.
+- Section headings use small uppercase tracked text; property headings use
+  stronger sentence-case text; individual field labels use lighter text.
+  Nested radius controls have an inset guide to reinforce their grouping.
+- Shape choices use icons with hover titles and accessible radio names.
 - Includes keyboard focus indicators and reduced-motion support.
 - Keeps ink/paper tokens fixed across app themes so changing the interface theme
   does not change the artwork or exported SVG.
@@ -92,9 +111,77 @@ The project is a static browser app with no build step:
 ### 6. **preview-viewport.js**
 - Implements zoom and pan as a separate view transform, independent of artwork
   generation, shape geometry, and export.
-- Batches navigation events into a single CSS canvas transform per animation frame.
+- Batches navigation and scene updates into one canvas drawing frame.
 - Includes dependency-free zoom anchoring and pan-bounds tests in
   `preview-viewport.test.js`.
+
+### 7. **image-import.js**
+- Validates file size, sniffs format signatures and common raster dimensions,
+  and selects an appropriate browser decoder.
+- Uses Blob URLs or asynchronous bitmap decoding rather than base64 copies.
+- Produces one bounded working canvas and reusable RGBA pixel buffer.
+- Has dependency-free import tests in `image-import.test.js`.
+
+## Large images and image formats
+
+**Working resolution** limits the longest image edge:
+
+| Mode | Longest edge | Maximum working RGBA buffer |
+| --- | --- | --- |
+| Fast | 1,024 px | 4 MiB |
+| Balanced (default) | 2,048 px | 16 MiB |
+| Detail | 4,096 px | 64 MiB |
+
+Aspect ratio is retained, with dimensions rounded to whole pixels. Small images
+are never enlarged. Source and working dimensions, compressed file size, pixel
+buffer size, and detected format appear in the working-resolution popover. The original
+file is retained locally so switching resolution can rebuild from the source,
+not from a previously downsampled image. Changing resolution resets generated
+artwork and the preview view.
+
+The bottom-left preview control shows only the current preset (for example
+**Balanced · 2K**). Open it to see the three presets and image details. The popover
+closes on selection, outside click, Escape, or viewport resize; resolution inputs
+remain associated with the settings form and are locked during processing.
+
+The pixel buffer is prepared once per import and reused across generation runs.
+Temporary decoded bitmaps are closed and Blob URLs revoked. Replaced working
+canvases are released. Source transparency is retained, never flattened onto a
+background color. Fully transparent pixels receive zero stippling weight, and
+partially transparent pixels contribute proportionally to their alpha. Color
+sampling excludes invisible RGB values. Transparent artwork has no paper fill;
+a source-alpha mask clips shapes at transparent boundaries and preserves partial
+opacity in both preview renderers and SVG export. Opaque images retain the
+selected ink/paper background. Masked SVGs embed a working-resolution alpha PNG;
+the shapes remain vector geometry, while transparency detail follows that mask.
+The preview displays transparent regions over the selected ink/paper background:
+black-on-white always displays white paper, including in dark app mode.
+This viewing background is not baked into transparent source pixels or SVG masks.
+
+| Formats | Support |
+| --- | --- |
+| JPEG / JFIF, PNG / APNG, WebP, AVIF, GIF, BMP, ICO | Browser-native decoding; availability depends on the browser |
+| SVG | Browser image-element decoding, rasterized at the working resolution |
+| HEIC / HEIF, TIFF, JPEG XL | Attempted through browser decoders; **not universally supported** |
+| Other `image/*` files | Attempted if the browser can decode them |
+| Camera RAW, PSD, PDF | No bundled decoder; convert to a supported image first |
+
+Animated images are captured as a single still frame; they are not imported as
+animations. Native bitmap decoding uses the first frame. JPEG EXIF orientation
+is honored by the browser and included in sniffed source dimensions.
+Missing or generic MIME types are accepted when a known signature or image
+extension identifies the file. Corrupt files and unsupported codecs show inline
+errors with conversion guidance; failed imports preserve the previous image and
+artwork and restore its processing settings.
+
+Uploads are limited to **100 MiB**, source dimensions to **100 megapixels** and
+**65,535 px per edge**. PNG, JPEG, GIF, BMP, and common WebP headers are checked
+before decoding, using at most 256 KiB of header data. Other formats, or dimensions
+not found within that header, are checked after decoding. Bitmap resize hints
+are supplied when dimensions are known. Browser decoding can still use temporary
+full-source memory: these limits bound working data, not every internal decoder
+allocation. A decoder request times out after 60 seconds; a late bitmap is closed.
+No files are uploaded, and no additional codec libraries or services are required.
 
 ## Preview navigation
 
@@ -116,15 +203,36 @@ appearance changes and generation preserve the current view. Resizing preserves
 the relative view position. Navigation remains available during refinement and
 animation, but is disabled while loading an image.
 
-For responsiveness, navigation scales the existing raster canvas using a
-compositor transform: it does not redraw marks, resample colors, rebuild Voronoi
-cells, or allocate a zoom-sized bitmap. This trades native vector sharpness at
-high preview magnification for low interaction cost. SVG export remains sharp,
-full-size, and unaffected by preview zoom or pan.
+The vector-backed preview uses `preview-renderer.js`, with `preview-gpu.js` for
+WebGL2 acceleration. Geometry and colors are cached when artwork changes.
+WebGL2 draws visible circles and regular polygons as instanced quads with analytic,
+antialiased shape edges, in one draw call. Browsers without WebGL2 use cached
+Canvas `Path2D` objects instead and log the fallback. Navigation applies the
+current zoom/pan transform without resampling colors, rebuilding Voronoi cells,
+or moving points. Off-screen marks are culled using their full radius, and
+painter order is retained for overlapping colored shapes. Graphics context loss
+is reported inline, with a redraw when the browser restores it.
+
+Local profiling with 40,000 colored hexagons in a 1,000 x 700 logical-pixel
+viewport at 2x pixel density measured WebGL2 redraw medians of 2.7 ms at fit,
+0.8 ms at 2x zoom, 0.4 ms at 4x, and 0.3 ms at 8x. The fit-view 95th percentile
+was 5.3 ms. These measurements include GPU synchronization, but are not a
+cross-device frame-rate guarantee. The Canvas 2D fallback remained sharp but
+measured about 62 ms at fit in the same local test; dense scenes may run slower
+on browsers without WebGL2. Scene preparation is separate from navigation and
+can still take longer when generating or changing tens of thousands of marks.
+
+The backing canvas follows viewport size and display pixel density, including
+changes between displays. Its dimensions do not grow with preview zoom. Generated
+shapes are rasterized afresh at the requested magnification rather than stretching
+old pixels; the source photograph still has its original raster-detail limit.
+SVG export uses logical canvas dimensions, independent of display density, zoom,
+and pan. Culling and viewport bounds have regression tests in
+`preview-renderer.test.js`.
 
 ## Shapes, orientation, and size
 
-Choose **Dots**, **Squares**, **Triangles**, or **Hexagons** under **Mark appearance**.
+Choose **Dots**, **Squares**, **Triangles**, or **Hexagons** under **Appearance**.
 Changing shape or appearance updates existing artwork without regenerating its
 point distribution. SVG export uses the exact geometry and colors in the preview.
 
@@ -143,7 +251,7 @@ Polygon shapes support three orientation modes:
   axis because they have no unique preferred direction.
 
 Orientation controls are hidden for dots, which look identical at every angle.
-**Minimum radius** and **Radius variation** apply to every shape: radius means
+**Radius → Min / Variation** apply to every shape: radius means
 center-to-edge for dots and center-to-vertex for polygons, in canvas pixels.
 Brightness controls the added variation exactly as it does for dots.
 
@@ -169,6 +277,11 @@ Bootstrap and jQuery are not required.
 ---
 
 ## Usage
+
+Generate and export actions stay in the bottom footer while desktop settings
+scroll independently. **Export SVG** and **Export PNG** share one row. PNG exports
+the full artwork at logical preview dimensions, independent of zoom and display
+density, using the same geometry, colors, and transparency mask as SVG.
 
 1. Upload an image.
 2. Adjust parameters like stipple count, iteration count, dot size, and colorization.
@@ -198,7 +311,10 @@ node --check studio-ui.js
 node --check stipple-art.js
 node --check shape-geometry.js
 node --check preview-viewport.js
-node --test shape-geometry.test.js preview-viewport.test.js
+node --check image-import.js
+node --check preview-renderer.js
+node --check preview-gpu.js
+node --test shape-geometry.test.js preview-viewport.test.js preview-renderer.test.js image-import.test.js
 ```
 
 Enjoy creating beautiful stipple art!

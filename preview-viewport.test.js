@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { zoomAt, constrain, MIN_ZOOM, MAX_ZOOM } = require('./preview-viewport.js');
+const { zoomAt, constrain, MIN_ZOOM, MAX_ZOOM, PreviewViewport } = require('./preview-viewport.js');
 
 function near(actual, expected) {
   assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} differs from ${expected}`);
@@ -75,4 +75,39 @@ test('navigation math leaves its input unchanged', () => {
   zoomAt(view, 4, { x: 400, y: 300 });
   constrain(view, 800, 600);
   assert.deepEqual(view, snapshot);
+});
+
+test('zoom, pan, and fit bursts coalesce into one draw of the latest view', t => {
+  const original = globalThis.requestAnimationFrame;
+  const callbacks = [];
+  globalThis.requestAnimationFrame = callback => { callbacks.push(callback); return callbacks.length; };
+  t.after(() => {
+    if (original === undefined) delete globalThis.requestAnimationFrame;
+    else globalThis.requestAnimationFrame = original;
+  });
+  const viewport = Object.create(PreviewViewport.prototype);
+  Object.assign(viewport, {
+    width: 800, height: 600, enabled: true, frame: null,
+    view: { zoom: 1, x: 0, y: 0 }, pointers: new Map(),
+    stage: { classList: { remove() {} } },
+    out: {}, into: {}, fit: {}, output: {}
+  });
+  const drawn = [];
+  viewport.draw = view => drawn.push({ ...view });
+  for (let i = 0; i < 100; i++) {
+    viewport.zoomBy(1.25);
+    viewport.pan(-20, -10);
+    viewport.reset();
+  }
+  assert.equal(callbacks.length, 1);
+  assert.equal(drawn.length, 0);
+  callbacks.shift()();
+  assert.deepEqual(drawn, [{ zoom: 1, x: 0, y: 0 }]);
+  assert.equal(viewport.frame, null);
+  viewport.zoomBy(2);
+  assert.equal(callbacks.length, 1);
+  callbacks.shift()();
+  assert.equal(drawn.length, 2);
+  assert.equal(drawn[1].zoom, 2);
+  assert.equal(viewport.output.value, '200%');
 });

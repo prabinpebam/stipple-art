@@ -34,26 +34,8 @@
     <symbol id="icon-fit" viewBox="0 0 24 24"><path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/></symbol>
   </svg>
 
-  <header class="app-header">
-    <a class="brand" href="./" aria-label="Stipple Studio home, created by Prabin Pebam">
-      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
-      <span class="brand-copy"><span>stipple<span class="brand-light"> / studio</span></span><span class="brand-attribution">Created by Prabin Pebam</span></span>
-    </a>
-    <span class="header-caption">A little image. A thousand possibilities.</span>
-    <button class="button button--quiet" id="themeToggle" type="button" aria-label="Switch to dark mode">
-      <svg class="icon theme-icon--light"><use href="#icon-moon"/></svg>
-      <svg class="icon theme-icon--dark"><use href="#icon-sun"/></svg>
-      <span id="themeLabel">Dark mode</span>
-    </button>
-  </header>
-
   <main class="studio">
-    <section class="workspace" aria-labelledby="workspaceTitle">
-      <div class="workspace-heading">
-        <div><p class="eyebrow">THE ART OF LESS</p><h1 id="workspaceTitle">Every dot tells a story.</h1><p class="text-muted">Transform your images into something beautifully simple.</p></div>
-        <span class="badge">Voronoi stippling</span>
-      </div>
-
+    <section class="workspace" aria-label="Preview workspace">
       <div class="preview-panel">
         <div class="preview-toolbar">
           <span class="toolbar-title"><svg class="icon"><use href="#icon-image"/></svg> <span id="previewTitle">Your canvas</span></span>
@@ -70,75 +52,95 @@
             <span class="text-small text-muted">Or drag and drop an image onto the canvas</span>
           </div>
           <div class="drop-overlay" aria-hidden="true"><svg class="icon"><use href="#icon-upload"/></svg><span>Drop your image here</span></div>
-          <div id="progressBarContainer" class="progress-card" hidden>
-            <div class="field-heading"><span>Refining your dots</span><output id="progressValue">0%</output></div>
-            <div class="progress-track"><div id="progressBar" class="progress-fill" role="progressbar" aria-label="Generation progress" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div></div>
-            <p class="text-small text-muted">Finding the right place for every dot.</p>
-          </div>
         </div>
         <div class="preview-footer">
-          <span id="imageDimensions">Your artwork will appear here</span>
+          <button class="button button--quiet resolution-state" id="resolutionButton" type="button" popovertarget="resolutionPopover" aria-expanded="false" aria-label="Working resolution: Balanced, 2K. Open settings."><span id="resolutionState">Balanced · 2K</span><span class="chevron" aria-hidden="true"></span></button>
           <div class="zoom-controls" role="group" aria-label="Preview zoom">
             <button class="button button--secondary button--icon" id="zoomOutButton" type="button" aria-label="Zoom out" title="Zoom out (-)" disabled><svg class="icon" aria-hidden="true"><use href="#icon-minus"/></svg></button>
             <output id="zoomValue" aria-label="Zoom level relative to fit">100%</output>
             <button class="button button--secondary button--icon" id="zoomInButton" type="button" aria-label="Zoom in" title="Zoom in (+)" disabled><svg class="icon" aria-hidden="true"><use href="#icon-plus"/></svg></button>
             <button class="button button--secondary" id="zoomFitButton" type="button" title="Fit artwork (0)" disabled><svg class="icon" aria-hidden="true"><use href="#icon-fit"/></svg>Fit</button>
           </div>
+          <div class="resolution-popover" id="resolutionPopover" popover aria-labelledby="resolutionLabel">
+            <div class="field">
+              <span class="field-label" id="resolutionLabel">Working resolution</span>
+              <div class="segmented-control" role="radiogroup" aria-labelledby="resolutionLabel">
+                <label class="segment"><input class="visually-hidden" type="radio" name="resolutionOption" form="settingsForm" value="1024"><span>Fast · 1K</span></label>
+                <label class="segment"><input class="visually-hidden" type="radio" name="resolutionOption" form="settingsForm" value="2048" checked><span>Balanced · 2K</span></label>
+                <label class="segment"><input class="visually-hidden" type="radio" name="resolutionOption" form="settingsForm" value="4096"><span>Detail · 4K</span></label>
+              </div>
+              <p class="field-hint">Limits the longest edge; smaller images are never enlarged. Changing this resets generated artwork.</p>
+              <span class="field-label" id="imageDimensions">No image loaded</span>
+              <p class="import-details" id="importDetails" role="status">Large images are resized locally before pixel sampling. Animated formats use a single frame.</p>
+              <p class="field-hint">Transparency is preserved. Empty pixels are excluded from stippling.</p>
+            </div>
+          </div>
         </div>
-        <p class="preview-help" id="previewHelp">Scroll to zoom &middot; Drag to pan &middot; Pinch on touch &middot; + / - to zoom, arrows to pan, 0 to fit</p>
       </div>
-
-      <div class="workspace-footer"><span class="privacy-note"><span class="status-dot"></span> Your images stay in your browser</span><span>Created by Prabin Pebam</span></div>
     </section>
 
     <aside class="settings-panel" aria-labelledby="settingsTitle">
-      <div class="settings-heading"><div><p class="eyebrow">MAKE IT YOURS</p><h2 id="settingsTitle">The details</h2></div><span class="badge">01 / Create</span></div>
+      <div class="settings-scroll">
+      <header class="app-header">
+        <a class="brand" href="./" aria-label="Stipple Studio home, created by Prabin Pebam">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+          <span class="brand-copy"><span>stipple<span class="brand-light"> / studio</span></span><span class="brand-attribution">Created by Prabin Pebam</span></span>
+        </a>
+        <button class="button button--quiet button--icon" id="themeToggle" type="button" aria-label="Switch to dark mode">
+          <svg class="icon theme-icon--light"><use href="#icon-moon"/></svg>
+          <svg class="icon theme-icon--dark"><use href="#icon-sun"/></svg>
+          <span class="visually-hidden" id="themeLabel">Dark mode</span>
+        </button>
+      </header>
+      <h2 id="settingsTitle" class="visually-hidden">Settings</h2>
       <form id="settingsForm">
         <fieldset class="control-section">
-          <legend>Source image</legend>
           <label class="upload-card" for="imageUpload">
             <span class="upload-icon"><svg class="icon"><use href="#icon-upload"/></svg></span>
-            <span class="upload-copy"><strong id="imageFileName">Choose an image</strong><span id="uploadHint">Browse files or drop onto the canvas</span></span>
-            <input class="visually-hidden" type="file" id="imageUpload" accept="image/*">
+            <span class="upload-copy"><strong id="imageFileName">Upload image</strong><span class="visually-hidden" id="uploadHint">Choose an image</span></span>
+            <input class="visually-hidden" type="file" id="imageUpload" accept="image/*,.jpg,.jpeg,.jfif,.png,.apng,.webp,.avif,.gif,.bmp,.ico,.svg,.tif,.tiff,.heic,.heif,.jxl">
           </label>
         </fieldset>
 
         <fieldset class="control-section">
-          <legend>Mark distribution</legend>
-          <div class="field"><label for="stippleCount">Number of marks</label><input class="input" type="number" id="stippleCount" value="40000" min="1" step="1" required><p class="field-hint">More marks, more detail. Longer to render.</p></div>
-          <div class="field"><div class="field-heading"><label for="iterationCount">Refinement</label><output for="iterationCount" id="iterationCountVal">40</output></div><input class="range" type="range" id="iterationCount" min="10" max="100" value="40"><div class="range-labels"><span>Quick sketch</span><span>Fine detail</span></div></div>
-          <div class="field"><label for="randomSeed">Random seed</label><input class="input input--mono" type="number" id="randomSeed" value="42" step="1" required><p class="field-hint">Sets the starting arrangement of your dots.</p></div>
+          <legend>Distribution</legend>
+          <div class="field field--inline"><label for="stippleCount">Marks</label><input class="input" type="number" id="stippleCount" value="40000" min="1" step="1" required title="More marks add detail and take longer to render."></div>
+          <div class="field"><div class="field-heading"><label for="iterationCount">Refinement</label><output for="iterationCount" id="iterationCountVal">10</output></div><input class="range" type="range" id="iterationCount" min="10" max="100" value="10"><div class="range-labels"><span>Quick sketch</span><span>Fine detail</span></div></div>
+          <div class="field field--inline"><label for="randomSeed">Seed</label><input class="input input--mono" type="number" id="randomSeed" value="42" step="1" required title="Starting arrangement of the marks."></div>
         </fieldset>
 
         <fieldset class="control-section">
-          <legend>Mark appearance</legend>
+          <legend>Appearance</legend>
           <div class="field">
-            <span id="shapeLabel" class="field-label">Shape</span>
+            <span id="shapeLabel" class="visually-hidden">Shape</span>
             <div class="segmented-control shape-picker" role="radiogroup" aria-labelledby="shapeLabel">
-              <label class="segment"><input class="visually-hidden" type="radio" name="shapeOption" value="dot" checked><span><svg class="icon" aria-hidden="true"><use href="#icon-dot"/></svg>Dots</span></label>
-              <label class="segment"><input class="visually-hidden" type="radio" name="shapeOption" value="square"><span><svg class="icon" aria-hidden="true"><use href="#icon-square"/></svg>Squares</span></label>
-              <label class="segment"><input class="visually-hidden" type="radio" name="shapeOption" value="triangle"><span><svg class="icon" aria-hidden="true"><use href="#icon-triangle"/></svg>Triangles</span></label>
-              <label class="segment"><input class="visually-hidden" type="radio" name="shapeOption" value="hexagon"><span><svg class="icon" aria-hidden="true"><use href="#icon-hexagon"/></svg>Hexagons</span></label>
+              <label class="segment" title="Dots"><input class="visually-hidden" type="radio" name="shapeOption" value="dot" aria-label="Dots" checked><span><svg class="icon" aria-hidden="true"><use href="#icon-dot"/></svg></span></label>
+              <label class="segment" title="Squares"><input class="visually-hidden" type="radio" name="shapeOption" value="square" aria-label="Squares"><span><svg class="icon" aria-hidden="true"><use href="#icon-square"/></svg></span></label>
+              <label class="segment" title="Triangles"><input class="visually-hidden" type="radio" name="shapeOption" value="triangle" aria-label="Triangles"><span><svg class="icon" aria-hidden="true"><use href="#icon-triangle"/></svg></span></label>
+              <label class="segment" title="Hexagons"><input class="visually-hidden" type="radio" name="shapeOption" value="hexagon" aria-label="Hexagons"><span><svg class="icon" aria-hidden="true"><use href="#icon-hexagon"/></svg></span></label>
             </div>
           </div>
           <div class="orientation-controls" id="orientationControls" hidden>
             <div class="field">
               <span id="orientationLabel" class="field-label">Orientation</span>
               <div class="segmented-control orientation-picker" role="radiogroup" aria-labelledby="orientationLabel">
-                <label class="segment"><input class="visually-hidden" type="radio" name="orientationOption" value="fixed" checked disabled><span>Same angle for all</span></label>
-                <label class="segment"><input class="visually-hidden" type="radio" name="orientationOption" value="random" disabled><span>Random orientation</span></label>
-                <label class="segment"><input class="visually-hidden" type="radio" name="orientationOption" value="voronoi" disabled><span>Follow Voronoi pattern</span></label>
+                <label class="segment" title="Same angle for every shape"><input class="visually-hidden" type="radio" name="orientationOption" value="fixed" checked disabled><span>Fixed</span></label>
+                <label class="segment" title="Stable random rotations"><input class="visually-hidden" type="radio" name="orientationOption" value="random" disabled><span>Random</span></label>
+                <label class="segment" title="Align with the Voronoi pattern"><input class="visually-hidden" type="radio" name="orientationOption" value="voronoi" disabled><span>Voronoi</span></label>
               </div>
               <p class="field-hint" id="orientationHint">Rotate every shape by the same angle.</p>
             </div>
             <div class="field" id="shapeAngleField">
-              <div class="field-heading"><label for="shapeAngle">Shared angle</label><span><output for="shapeAngle" id="shapeAngleVal">0</output>&deg;</span></div>
+              <div class="field-heading"><label for="shapeAngle">Angle</label><span><output for="shapeAngle" id="shapeAngleVal">0</output>&deg;</span></div>
               <input class="range" type="range" id="shapeAngle" min="0" max="360" step="1" value="0" disabled>
               <div class="range-labels"><span>0&deg;</span><span>360&deg;</span></div>
             </div>
           </div>
-          <div class="field"><div class="field-heading"><label for="minDotSize">Minimum radius</label><span><output for="minDotSize" id="minDotSizeVal">0.5</output> <span class="text-muted">px</span></span></div><input class="range" type="range" id="minDotSize" min="0.5" max="8" step="0.1" value="0.5"><p class="field-hint">Center to edge for dots; center to vertex for polygons.</p></div>
-          <div class="field"><div class="field-heading"><label for="dotSizeRange">Radius variation</label><span><output for="dotSizeRange" id="dotSizeRangeVal">1.5</output> <span class="text-muted">px</span></span></div><input class="range" type="range" id="dotSizeRange" min="0" max="20" step="0.5" value="1.5"></div>
+          <div class="property-group" role="group" aria-labelledby="radiusLabel">
+            <span class="field-label" id="radiusLabel">Radius</span>
+            <div class="field"><div class="field-heading"><label for="minDotSize" id="minRadiusLabel">Min</label><span><output for="minDotSize" id="minDotSizeVal">0.5</output> <span class="text-muted">px</span></span></div><input class="range" type="range" id="minDotSize" min="0.5" max="8" step="0.1" value="0.5" aria-labelledby="radiusLabel minRadiusLabel"><p class="field-hint">Center to edge for dots; center to vertex for polygons.</p></div>
+            <div class="field"><div class="field-heading"><label for="dotSizeRange" id="radiusVariationLabel">Variation</label><span><output for="dotSizeRange" id="dotSizeRangeVal">1.5</output> <span class="text-muted">px</span></span></div><input class="range" type="range" id="dotSizeRange" min="0" max="20" step="0.5" value="1.5" aria-labelledby="radiusLabel radiusVariationLabel"></div>
+          </div>
           <div class="field">
             <span id="inkLabel" class="field-label">Ink &amp; paper</span>
             <div class="segmented-control" role="radiogroup" aria-labelledby="inkLabel">
@@ -151,28 +153,47 @@
         </fieldset>
 
         <details class="control-section advanced-settings">
-          <summary>Advanced settings <span class="chevron" aria-hidden="true"></span></summary>
+          <summary>Advanced <span class="chevron" aria-hidden="true"></span></summary>
           <div class="advanced-content">
             <div class="field"><div class="field-heading"><label for="whiteCutoff">Brightness cutoff</label><output for="whiteCutoff" id="whiteCutoffVal">0.07</output></div><input class="range" type="range" id="whiteCutoff" min="0" max="1" step="0.01" value="0.07"><p class="field-hint">Exclude low-weight areas when placing dots.</p></div>
             <div class="field"><div class="field-heading"><label for="sampleCount">Samples per cell</label><output for="sampleCount" id="sampleCountVal">30</output></div><input class="range" type="range" id="sampleCount" min="5" max="100" step="1" value="30"><p class="field-hint">Higher sampling improves centroid estimation.</p></div>
-            <label class="switch-row" for="animateVoronoi"><span><strong>Animate the process</strong><span>Watch the pattern continuously evolve</span></span><input class="switch" type="checkbox" role="switch" id="animateVoronoi"></label>
+            <label class="switch-row" for="animateVoronoi"><span><strong>Animate</strong><span>Watch the pattern continuously evolve</span></span><input class="switch" type="checkbox" role="switch" id="animateVoronoi"></label>
           </div>
         </details>
       </form>
-      <div class="action-panel">
+      <details class="control-section advanced-settings">
+        <summary>Navigation <span class="chevron" aria-hidden="true"></span></summary>
+        <p class="preview-help" id="previewHelp">Scroll to zoom. Drag to pan. Pinch on touch. With the preview focused, use + / - to zoom, arrow keys to pan, and 0 to fit.</p>
+      </details>
+      <details class="control-section advanced-settings">
+        <summary>About <span class="chevron" aria-hidden="true"></span></summary>
+        <div class="advanced-content"><p class="eyebrow">THE ART OF LESS</p><h2>Every dot tells a story.</h2><p class="text-muted">Transform your images into something beautifully simple with Voronoi stippling.</p><p class="privacy-note"><span class="status-dot"></span>Your images stay in your browser.</p></div>
+      </details>
+      </div>
+      <footer class="action-panel">
+        <div id="progressBarContainer" class="progress-card" hidden>
+          <div class="field-heading"><span>Refining your marks</span><output id="progressValue">0%</output></div>
+          <div class="progress-track"><div id="progressBar" class="progress-fill" role="progressbar" aria-label="Generation progress" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div></div>
+        </div>
         <p class="status-message" id="studioStatus" role="status" aria-live="polite">Choose an image to get started.</p>
         <button id="generateButton" type="submit" form="settingsForm" class="button button--primary button--full" disabled><svg class="icon"><use href="#icon-spark"/></svg><span>Generate stipple art</span></button>
         <button id="stopButton" type="button" class="button button--secondary button--full" hidden><svg class="icon"><use href="#icon-stop"/></svg>Stop animation</button>
-        <button id="downloadSVGButton" type="button" class="button button--secondary button--full" disabled><svg class="icon"><use href="#icon-download"/></svg>Export SVG</button>
+        <div class="export-actions">
+          <button id="downloadSVGButton" type="button" class="button button--secondary" disabled><svg class="icon" aria-hidden="true"><use href="#icon-download"/></svg>Export SVG</button>
+          <button id="downloadPNGButton" type="button" class="button button--secondary" disabled><svg class="icon" aria-hidden="true"><use href="#icon-download"/></svg>Export PNG</button>
+        </div>
         <span class="action-caption">Vector artwork. Ready for any size.</span>
-      </div>
+      </footer>
     </aside>
   </main>
 
   <script src="https://d3js.org/d3-delaunay.v6.min.js"></script>
   <script src="https://d3js.org/d3-polygon.v1.min.js"></script>
   <script src="shape-geometry.js"></script>
+  <script src="preview-gpu.js"></script>
+  <script src="preview-renderer.js"></script>
   <script src="preview-viewport.js"></script>
+  <script src="image-import.js"></script>
   <script src="stipple-art.js"></script>
 </body>
 </html>

@@ -53,6 +53,26 @@
       document.getElementById("imageUpload").click();
     });
 
+    const resolutionButton = document.getElementById("resolutionButton");
+    const resolutionPopover = document.getElementById("resolutionPopover");
+    resolutionPopover.addEventListener("beforetoggle", event => {
+      if (event.newState !== "open") return;
+      const bounds = resolutionButton.getBoundingClientRect();
+      resolutionPopover.style.left = `${Math.max(16, Math.min(bounds.left, window.innerWidth - 368))}px`;
+      resolutionPopover.style.bottom = `${Math.max(16, window.innerHeight - bounds.top + 8)}px`;
+      resolutionPopover.style.maxHeight = `${Math.max(120, bounds.top - 24)}px`;
+    });
+    resolutionPopover.addEventListener("toggle", event => {
+      resolutionButton.setAttribute("aria-expanded", String(event.newState === "open"));
+    });
+    resolutionPopover.addEventListener("change", () => {
+      resolutionPopover.hidePopover();
+      resolutionButton.focus({ preventScroll: true });
+    });
+    window.addEventListener("resize", () => {
+      if (resolutionPopover.matches(":popover-open")) resolutionPopover.hidePopover();
+    });
+
     const stage = document.getElementById("renderArea");
     stage.addEventListener("dragenter", event => {
       event.preventDefault();

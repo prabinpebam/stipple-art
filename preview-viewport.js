@@ -18,9 +18,10 @@
   }
 
   class PreviewViewport {
-    constructor(stage, canvas) {
+    constructor(stage, canvas, draw) {
       this.stage = stage;
       this.canvas = canvas;
+      this.draw = draw;
       this.view = { zoom: 1, x: 0, y: 0 };
       this.enabled = false;
       this.frame = null;
@@ -116,9 +117,7 @@
     reset() {
       this.endGesture();
       this.view = { zoom: 1, x: 0, y: 0 };
-      if (this.frame !== null) cancelAnimationFrame(this.frame);
-      this.frame = null;
-      this.apply();
+      this.schedule();
     }
 
     resize() {
@@ -145,7 +144,7 @@
 
     schedule() {
       this.view = constrain(this.view, this.width, this.height);
-      // Coalesce pointer/wheel bursts into one compositor-only update per frame.
+      // Navigation and artwork changes share one drawing frame.
       if (this.frame === null) this.frame = requestAnimationFrame(() => {
         this.frame = null;
         this.apply();
@@ -160,14 +159,13 @@
     }
 
     apply() {
-      const { x, y, zoom } = this.view;
-      this.canvas.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${zoom})`;
+      this.draw(this.view);
       this.updateControls();
     }
   }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { zoomAt, constrain, MIN_ZOOM, MAX_ZOOM };
+    module.exports = { zoomAt, constrain, MIN_ZOOM, MAX_ZOOM, PreviewViewport };
   } else {
     globalThis.PreviewViewport = PreviewViewport;
   }
