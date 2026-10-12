@@ -78,9 +78,11 @@
       ctx.setTransform(ratioX * view.zoom, 0, 0, ratioY * view.zoom, ratioX * view.x, ratioY * view.y);
       const scene = this.scene;
       ctx.save();
-      ctx.beginPath();
-      ctx.rect(0, 0, scene.width, scene.height);
-      ctx.clip();
+      if (scene.image || !offsets) {
+        ctx.beginPath();
+        ctx.rect(0, 0, scene.width, scene.height);
+        ctx.clip();
+      }
       if (scene.image) {
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';

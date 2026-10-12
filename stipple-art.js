@@ -46,6 +46,9 @@ document.addEventListener("DOMContentLoaded", function() {
   const animateVoronoiSwitch = document.getElementById('animateVoronoi');
   const mouseInteractionSwitch = document.getElementById('mouseInteraction');
   const soundSwitch = document.getElementById('particleSound');
+  const turbulenceSwitch = document.getElementById('turbulence');
+  const turbulenceFrequency = document.getElementById('turbulenceFrequency');
+  const turbulenceAmplitude = document.getElementById('turbulenceAmplitude');
   let audioUnlocking = false;
   async function unlockParticleSound() {
     if (!soundSwitch.checked || audioUnlocking ||
@@ -118,7 +121,7 @@ document.addEventListener("DOMContentLoaded", function() {
     viewport.schedule();
   });
   canvas.addEventListener('particle-touch', event => {
-    if (!particles.enabled) return;
+    if (!particles.enabled || !mouseInteractionSwitch.checked) return;
     particles.move(event.detail.point.x, event.detail.point.y, event.detail.timestamp);
     viewport.schedule();
   });
@@ -131,10 +134,21 @@ document.addEventListener("DOMContentLoaded", function() {
 
   function syncMouseInteraction() {
     mouseInteractionSwitch.disabled = Boolean(busyMode) || reducedMotion.matches;
+    turbulenceSwitch.disabled = Boolean(busyMode) || reducedMotion.matches;
+    document.getElementById('turbulenceControls').hidden = !turbulenceSwitch.checked;
+    [turbulenceFrequency, turbulenceAmplitude].forEach(input => {
+      input.disabled = Boolean(busyMode) || reducedMotion.matches || !turbulenceSwitch.checked;
+    });
+    turbulenceSwitch.title = reducedMotion.matches ? 'Disabled by your reduced-motion preference.' :
+      'Image-wide fluid turbulence with a slowly rotating inverse-square gradient. Preview only.';
     mouseInteractionSwitch.title = reducedMotion.matches ? 'Disabled by your reduced-motion preference.' :
-      'Move over the artwork to scatter shapes. Preview only.';
-    const enabled = mouseInteractionSwitch.checked && !busyMode && !reducedMotion.matches &&
+      'Move over the artwork to stir a local fluid circle. Preview only.';
+    particles.setMouseEnabled(mouseInteractionSwitch.checked);
+    particles.setTurbulence(turbulenceSwitch.checked, Number(turbulenceFrequency.value), Number(turbulenceAmplitude.value));
+    const available = !busyMode && !reducedMotion.matches &&
       !document.getElementById('previewWorkspace').inert && !artworkExport.dialog.open && Boolean(renderedArtwork);
+    const enabled = available && (mouseInteractionSwitch.checked ||
+      (turbulenceSwitch.checked && Number(turbulenceAmplitude.value) > 0) || particles.active);
     if (particles.enabled !== enabled) particles.setEnabled(enabled);
     if (!enabled) particleAudio.silence();
   }
@@ -142,12 +156,18 @@ document.addEventListener("DOMContentLoaded", function() {
     syncMouseInteraction();
     viewport.schedule();
   });
+  [turbulenceSwitch, turbulenceFrequency, turbulenceAmplitude].forEach(input => {
+    input.addEventListener('input', () => {
+      syncMouseInteraction();
+      viewport.schedule();
+    });
+  });
   reducedMotion.addEventListener('change', () => {
     syncMouseInteraction();
     viewport.schedule();
   });
   canvas.addEventListener('pointermove', event => {
-    if (event.pointerType !== 'mouse' || event.buttons || viewport.pointers.size || !particles.enabled) return;
+    if (event.pointerType !== 'mouse' || event.buttons || viewport.pointers.size || !particles.enabled || !mouseInteractionSwitch.checked) return;
     const point = viewport.localPoint(event);
     particles.move(point.x, point.y, event.timeStamp);
     viewport.schedule();
@@ -505,7 +525,7 @@ document.addEventListener("DOMContentLoaded", function() {
       width, height, background, marks,
       offsetX, offsetY, renderWidth: image.width * scale, renderHeight: image.height * scale
     };
-    particles.reset(marks);
+    particles.reset(marks, { x: offsetX, y: offsetY, width: image.width * scale, height: image.height * scale });
     syncMouseInteraction();
     renderer.setScene(renderedArtwork);
     viewport.schedule();

@@ -192,6 +192,7 @@
       gl.scissor(left, this.canvas.height - bottom, Math.max(0, right - left), Math.max(0, bottom - top));
       gl.clearColor(...this.background);
       gl.clear(gl.COLOR_BUFFER_BIT);
+      if (!scene.image && offsets) gl.disable(gl.SCISSOR_TEST);
       const program = scene.image ? this.imageProgram : this.markProgram;
       gl.useProgram(program);
       gl.uniform2f(gl.getUniformLocation(program, 'uSize'), this.width, this.height);
@@ -217,9 +218,11 @@
           if (cx + mark.radius < bounds.left || cx - mark.radius > bounds.right ||
               cy + mark.radius < bounds.top || cy - mark.radius > bounds.bottom) continue;
           const index = count++ * 9;
-          this.visible.set(this.data.subarray(i * 9, i * 9 + 9), index);
           this.visible[index] = cx;
           this.visible[index + 1] = cy;
+          for (let component = 2; component < 9; component++) {
+            this.visible[index + component] = this.data[i * 9 + component];
+          }
         }
         gl.bindBuffer(gl.ARRAY_BUFFER, this.instances);
         gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.visible, 0, count * 9);

@@ -13,7 +13,8 @@ its distribution, explore it with a sharp zoomable preview, and export SVG or PN
 - Large-image import with 1K / 2K / 4K working resolutions and browser-native codecs.
 - Source transparency preserved as per-mark opacity, without silhouette clipping.
 - Pixel-density-aware WebGL2 preview, with a Canvas 2D fallback and zoom/pan gestures.
-- Optional cursor repulsion, fluid-like agitation, and damped return to the artwork.
+- Optional cursor-controlled fluid stirring, inertial motion, and return to the artwork.
+- Optional continuous turbulence, with frequency and amplitude controls.
 - Real sand audio with overlapping crossfaded grains driven by particle movement.
 - Pinned Generate / Export actions with format, PNG resolution, and sharing in a dialog.
 
@@ -196,8 +197,10 @@ The project is a static browser app with no build step:
 
 ### 9. **particle-field.js**
 - Stores transient displacement and velocity separately from original artwork.
-- Applies cursor repulsion, agitation, damping, and spring return with fixed steps.
+- Applies local and global fluid entrainment, damping, and softened inverse-square
+  home attraction with fixed steps.
 - Reports visible particle speed and position to the sound system.
+- Combines cursor-local fluid and optional image-wide turbulence without all-pairs gravity.
 
 ### 10. **particle-audio.js** and **audio/**
 - Decode the locally bundled CC0 sand recording and schedule overlapping grains.
@@ -211,6 +214,16 @@ The project is a static browser app with no build step:
 - Serializes the original geometry and opacity into SVG without a source mask.
 - Renders PNG at preview size or a 1K/2K/4K longest edge, preserving aspect ratio.
 - Cancels outdated preparation when options change or the dialog closes.
+
+### 12. **turbulence-field.js**
+- Generates a time-varying 2D curl field from two octaves of coherent value noise.
+- Caches a 33 x 33 vector grid with spatial and temporal interpolation.
+- Reuses typed arrays and a sampling buffer rather than evaluating noise per particle.
+
+### 13. **fluid-patch.js**
+- Simulates a 32 x 32 velocity grid using viscosity, advection, and pressure projection.
+- Supports a cursor-centered circular patch and a fixed domain enclosing the image.
+- Injects coherent curl flow and cursor momentum; remaps moving patches in world space.
 
 ## Large images and image formats
 
@@ -295,7 +308,7 @@ settled particles are silent. Sound mutes on blur, hidden tabs, disabled interac
 and scene resets. It is not included in exports.
 
 With **Particle interaction** enabled in Appearance, move the mouse over generated
-artwork. Nearby shapes repel and swirl in the cursor's wake, coast, and slowly
+artwork. Nearby shapes follow a circular fluid disturbance, swirl and coast, and slowly
 return to their original positions when the cursor moves away. This is a
 preview-only effect: SVG and PNG exports always use the undisturbed artwork.
 Mouse dragging still pans. One touch finger plays with particles; two touch
@@ -307,34 +320,157 @@ Hidden tabs discard transient motion instead of accumulating simulation time.
 
 ### Research and implementation
 
-The chosen model combines established techniques rather than a full fluid solver:
+The chosen model combines a coarse fluid solver with inertial particles:
 
 - [Daniel Shiffman, *The Nature of Code*: Forces](https://natureofcode.com/forces/)
   explains force accumulation and acceleration for interactive particles.
-- [Craig Reynolds: Steering Behaviors](https://www.red3d.com/cwr/steer/) provides
-  the flee/seek/arrival framework for local avoidance and returning to a target.
-- [Magnetic particle example](https://webdevpuneet.com/ui-snippets/three-magnetic-particles/)
-  describes exactly the home-position spring, proximity-weighted cursor
-  repulsion, and velocity damping pattern used in interactive particle fields.
 - [Glenn Fiedler: Fix Your Timestep](https://gafferongames.com/post/fix_your_timestep/)
-  explains fixed integration steps and bounded catch-up to avoid unstable springs
+  explains fixed integration steps and bounded catch-up to avoid unstable forces
   and runaway work after long frames.
 - [GPU Gems 38: Fast Fluid Dynamics](https://developer.nvidia.com/gpugems/gpugems/part-vi-beyond-triangles/chapter-38-fast-fluid-dynamics-simulation-gpu)
-  describes a true grid-based stable-fluids solver. Pressure/advection passes
-  are valuable for smoke/liquid, but unnecessary for this home-anchored effect.
+  describes the grid-based stable-fluids solver used for both effects.
 
-`particle-field.js` uses a damped spring toward each cached home position, a
-smooth finite-radius repulsive force, cursor-velocity impulses, and deterministic
-tangential agitation for a fluid-like wake. It is **not a physical fluid simulation**
-and does not calculate particle collisions. A fixed 120 Hz semi-implicit update
+`particle-field.js` uses softened inverse-square attraction toward each cached home
+position and drag toward simulated fluid velocities. The cursor controls a
+180-screen-pixel-radius circular patch, with softened inverse-square influence
+tapered smoothly to zero at its edge. Moving the cursor injects momentum into
+the fluid; coherent curl forcing keeps it swirling while stationary. There is
+no separate radial repulsion or synthetic sine-wave agitation.
+The circle follows the cursor directly; it does not roam or expand to reach
+distant dots. One-finger touch input controls the same patch.
+Mouse/touch flow has its own fixed **frequency 2** and **screen-space amplitude
+20**, independent of the global Turbulence sliders and rotating gradient.
+Amplitude is converted to artwork units by zoom; cursor movement still injects
+momentum into this separate field.
+The model does not calculate particle collisions. A fixed 120 Hz semi-implicit update
 with at most eight catch-up steps keeps forces stable; tiny motions snap exactly
-home so rendering stops when settled. Force radius/speed are measured in screen
-pixels and converted by zoom. State is stored in typed displacement/velocity
+home so rendering stops when settled. The cursor radius is measured in screen
+pixels and converted by zoom; gravity and fluid velocities use artwork coordinates.
+State is stored in typed displacement/velocity
 arrays, separate from point geometry, colors, and per-mark opacity.
 Renderers translate cached shapes, cull their displaced positions, and reuse the
 existing frame scheduler and instanced GPU draw. No Voronoi rebuilding or color
 sampling occurs during mouse interaction. Particles carry their original opacity
 as they move; no source-image mask clips them.
+
+## Turbulence
+
+**Turbulence** in Appearance is **off by default**. Enable it for a continuous,
+image-wide fluid field. Spatially varying swirls move dots in different directions,
+not as a single synchronized displacement. It works independently of
+**Particle interaction** and combines with the cursor's circular fluid disturbance
+when that is enabled.
+Shapes retain their cached colors, geometry, and opacity; no Voronoi relaxation
+is triggered. Exports remain the undisturbed artwork.
+
+- **Frequency (0.5-16, default 10, step 0.1):** swirl density across the image.
+  Higher values produce smaller, more numerous swirls. This is not a Hz
+  control for playback speed.
+- **Amplitude (0-50, default 20, step 0.1):** maximum fluid impulse strength at the
+  strong end of a rotating inverse-square gradient, not a pixel offset or displacement
+  limit. Zero removes the turbulence force.
+  Gravity and damping let particles settle back home when the
+  field is off, unless the mouse is still disturbing them.
+
+These controls affect only global turbulence, not mouse/touch frequency or amplitude.
+
+The amplitude gradient falls off with **softened inverse-square distance from
+the strong end**, rather than linearly. Softening is 20% of the projected image
+span, avoiding a singularity at the peak. The curve is normalized to **zero at
+the quiet end and the selected amplitude at the strong end**; halfway across,
+strength is about 5.5% of the maximum instead of 50%.
+It rotates one
+full turn every **60 seconds** of active simulation. Its endpoints come from
+projecting the original image rectangle along the current direction, so it stays
+within the image at every angle, including portrait images and preview letterboxing.
+The bounds do not grow when particles fly outward. No turbulence is injected
+outside the image, and scattered particles outside it receive no global fluid force.
+The gradient scales external fluid forcing; advection and inertia can still carry
+motion through the quiet end, rather than freezing particles there.
+
+The global solver uses a fixed square domain enclosing the image. The cursor field
+uses its own moving circular domain, so it stays local at every zoom level.
+The two grids independently simulate flow and their forces combine on particles.
+Outside the image and cursor circle, particles coast under home attraction and drag.
+There is no autonomous roaming circle or minimum dot-overlap constraint.
+
+Home force is `-G * offset / (distance² + softening²)^(3/2)`, approaching
+inverse-square magnitude far from home instead of becoming stronger as a linear
+spring would. The softened core prevents singularities near home. This is
+attraction to each particle's own fixed home, not mutual all-pairs gravity.
+Particles respond to shared fluid velocity fields; there is no quadratic
+pair-force calculation.
+
+Particle velocities and positions are integrated directly. Cached vector shapes
+are translated to those positions; there is **no image/texture distortion**.
+Moving particles may leave the original artboard and remain visible when zoomed
+out, subject only to the preview viewport clip. Exported artwork remains static.
+
+It pauses during generation, export dialogs,
+inactive mobile views, and reduced-motion mode. Hidden tabs stop drawing and
+reset transient motion; returning resumes the enabled effect without simulating
+the time spent hidden. Sound follows actual particle movement, including
+turbulence, if Sound is enabled. Continuous motion consumes more battery than
+the settled preview, so it remains opt-in on every device.
+
+### Research and performance
+
+The approach combines established fluid and procedural forcing techniques:
+
+- [Bridson et al., *Curl-noise for procedural fluid flow* (2007)](https://doi.org/10.1145/1276377.1276435):
+  derive rotational flow from the curl of a smooth potential instead of solving
+  a full fluid simulation. Publication details and the abstract were verified
+  through [Crossref](https://api.crossref.org/works/10.1145/1276377.1276435).
+- [The Nature of Code: Autonomous Agents](https://natureofcode.com/autonomous-agents/):
+  steering agents through local vector fields and combining behavioral forces.
+- [Curl-noise explanation](https://freder.github.io/UnityGraphicsProgrammingBook1/html-translated/vol2/Chapter%206%20_%20Curl%20Noise-Explanation%20of%20Noise%20Algorithms%20for%20Pseudo-Fluids.html):
+  finite-difference derivatives of coherent noise for lightweight pseudo-fluid motion.
+- [Fix Your Timestep](https://gafferongames.com/post/fix_your_timestep/):
+  bounded fixed integration steps for reliable force integration.
+- [GPU Gems 38: Fast Fluid Dynamics](https://developer.nvidia.com/gpugems/gpugems/part-vi-beyond-triangles/chapter-38-fast-fluid-dynamics-simulation-gpu):
+  the stable-fluids velocity-grid pipeline: external forcing, diffusion,
+  pressure projection, semi-Lagrangian advection, and another projection.
+
+The curl source uses `v = (d psi / dy, -d psi / dx)` on a cached grid. It uses
+original hash-based value noise with smooth interpolation, not copied shader code.
+Its velocity source drives real velocity-grid solvers. Viscosity uses six implicit
+diffusion sweeps; pressure is solved with 18 relaxation sweeps before and after
+advection. Inertial particles receive drag toward each field's fluid velocity,
+with circular falloff for the cursor field, plus home attraction and ambient damping.
+The fluid grids and particle-force targets update at 30 Hz and interpolate between
+updates; particle physics stays at 120 Hz with a maximum of eight catch-up steps.
+Only particles inside the image or cursor circle sample the respective fluid
+velocity. The gradient direction is calculated once per 30 Hz fluid update and
+its amplitude is applied on the small grid, not recomputed per particle.
+Force caches and
+sampling buffers are reused; fixed-domain fluid steps skip unnecessary remapping.
+Rendering preserves painter order and
+does not allocate a typed-array view for each moving shape.
+
+This is a coarse 2D fluid simulation with one-way coupling into inertial particles,
+not a free-surface liquid solver. Finite resolution and iterative projection
+leave residual divergence. Particle collisions and particle-to-fluid momentum
+feedback are not modeled, and exact mass conservation is not claimed.
+
+Local profiling of 40,000 colored hexagons with rotating-gradient turbulence at
+amplitude 5 **and** cursor fluid, at 1,000 x 700 logical pixels and
+2x density, measured **6.3 ms median / 12.6 ms
+95th percentile** for physics plus WebGL2 drawing, including GPU synchronization.
+These are local measurements, not a frame-rate guarantee on phones or Canvas 2D
+fallbacks. The phone default remains 10,000 particles. Global turbulence allocates
+no field while off; cursor fluid starts only with pointer/touch input. Settled
+particles with no active forcing stop requesting frames.
+
+On a deterministic 400-particle 800 x 600 test cloud at frequency 2, 20 seconds of
+amplitude-1 inverse-square gradient forcing produced about 8px maximum displacement
+and a 6.5-second return after forcing stopped. Amplitude 5 produced roughly 47px
+flights and an 8.4-second return. A stronger test at amplitude 20 produced about
+397px flights and a 14-second return. Weak inverse-square
+attraction deliberately allows long flights and slow returns at large distances.
+These are test results, not displacement caps or guaranteed return durations for
+every image. Tests check gradient endpoints and rotation, image-bounded injection,
+cursor locality, combined fields, finite zoom extremes, exact return, and reduced
+divergence after projection.
 
 ## Preview navigation
 
@@ -508,7 +644,9 @@ node --check particle-field.js
 node --check particle-audio.js
 node --check mobile-runtime.js
 node --check artwork-export.js
-node --test shape-geometry.test.js preview-viewport.test.js preview-renderer.test.js image-import.test.js particle-field.test.js particle-audio.test.js mobile-runtime.test.js site-icons.test.js artwork-export.test.js
+node --check turbulence-field.js
+node --check fluid-patch.js
+node --test shape-geometry.test.js preview-viewport.test.js preview-renderer.test.js image-import.test.js particle-field.test.js particle-audio.test.js mobile-runtime.test.js site-icons.test.js artwork-export.test.js turbulence-field.test.js fluid-patch.test.js
 ```
 
 Enjoy creating beautiful stipple art!

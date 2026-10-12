@@ -162,8 +162,15 @@
             <p class="field-hint">Paper color is independent of the app theme.</p>
           </div>
           <label class="switch-row" for="colorizeDots"><span><strong>Original colors</strong><span>Sample color from your image</span></span><input class="switch" type="checkbox" role="switch" id="colorizeDots" checked></label>
-          <label class="switch-row interaction-toggle" for="mouseInteraction" title="Move over the artwork or drag one finger to scatter shapes. Preview only."><span><strong>Particle interaction</strong></span><input class="switch" type="checkbox" role="switch" id="mouseInteraction" checked></label>
+          <label class="switch-row interaction-toggle" for="mouseInteraction" title="Move over the artwork or drag one finger to stir a local fluid circle. Preview only."><span><strong>Particle interaction</strong></span><input class="switch" type="checkbox" role="switch" id="mouseInteraction" checked></label>
           <label class="switch-row" for="particleSound" title="Sand-like sound follows particle movement"><span><strong>Sound</strong></span><input class="switch" type="checkbox" role="switch" id="particleSound" checked></label>
+          <div class="property-group" role="group" aria-labelledby="turbulenceLabel">
+            <label class="switch-row" for="turbulence" title="Image-wide fluid turbulence with a slowly rotating inverse-square gradient. Preview only."><span><strong id="turbulenceLabel">Turbulence</strong></span><input class="switch" type="checkbox" role="switch" id="turbulence"></label>
+            <div id="turbulenceControls" class="turbulence-controls" hidden>
+              <div class="field"><div class="field-heading"><label for="turbulenceFrequency">Frequency</label><output for="turbulenceFrequency" id="turbulenceFrequencyVal">10</output></div><input class="range" type="range" id="turbulenceFrequency" min="0.5" max="16" step="0.1" value="10" title="Higher frequency creates smaller swirls across the image." disabled></div>
+              <div class="field"><div class="field-heading"><label for="turbulenceAmplitude">Amplitude</label><output for="turbulenceAmplitude" id="turbulenceAmplitudeVal">20</output></div><input class="range" type="range" id="turbulenceAmplitude" min="0" max="50" step="0.1" value="20" title="Maximum strength of the rotating gradient, from 0 to 50 in 0.1 steps. Zero stops forcing." disabled></div>
+            </div>
+          </div>
         </fieldset>
 
         <details class="control-section advanced-settings">
@@ -233,6 +240,8 @@
   <script src="preview-gpu.js"></script>
   <script src="preview-renderer.js"></script>
   <script src="preview-viewport.js"></script>
+  <script src="turbulence-field.js"></script>
+  <script src="fluid-patch.js"></script>
   <script src="particle-field.js"></script>
   <script src="particle-audio.js"></script>
   <script src="image-import.js"></script>

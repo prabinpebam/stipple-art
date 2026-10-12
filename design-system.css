@@ -245,6 +245,8 @@ output { font-family: var(--cp-font-mono); color: var(--cp-text); font-size: var
 .settings-panel .property-group > .field-label { display: block; margin-bottom: var(--cp-space-1); }
 .settings-panel .property-group > .field { padding-left: var(--cp-space-2); border-left: var(--cp-border-width) solid var(--cp-border); }
 .settings-panel .property-group .field + .field { margin-top: var(--cp-panel-related-gap); }
+.settings-panel .turbulence-controls { margin-top: var(--cp-panel-related-gap); }
+.settings-panel #turbulenceLabel { font-size: var(--cp-text-sm); font-weight: var(--cp-weight-semibold); color: var(--cp-text); }
 .settings-panel .field + .field { margin-top: var(--cp-panel-field-gap); }
 .settings-panel .field + .switch-row { margin-top: var(--cp-panel-related-gap); }
 .settings-panel .interaction-toggle { margin-top: var(--cp-panel-group-gap); }
