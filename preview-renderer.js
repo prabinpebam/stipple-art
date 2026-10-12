@@ -28,6 +28,9 @@
     }
 
     resize(width, height, pixelRatio = window.devicePixelRatio || 1) {
+      if (typeof StudioRuntime !== 'undefined') {
+        pixelRatio = StudioRuntime.backingRatio(width, height, pixelRatio, document.documentElement.dataset.phone === 'true');
+      }
       this.width = width;
       this.height = height;
       if (this.gpu) {

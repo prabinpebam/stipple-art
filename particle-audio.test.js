@@ -79,3 +79,18 @@ test('real sample grains use overlapping envelopes and speed-dependent playback'
   assert.ok(scheduled[1].time < scheduled[0].duration / scheduled[0].rate);
   assert.ok(scheduled.every(grain => [2, 4].includes(grain.offset)));
 });
+
+test('idle audio stops waking the scheduler until new motion arrives', t => {
+  const cleared = [];
+  t.mock.method(globalThis, 'clearInterval', id => cleared.push(id));
+  const audio = new ParticleAudio();
+  audio.enabled = true;
+  audio.buffer = {};
+  audio.timer = 123;
+  audio.lastUpdate = 0;
+  audio.context = { currentTime: 1, state: 'running' };
+  audio.gain = { gain: { setTargetAtTime() {} } };
+  audio.scheduleGrains();
+  assert.equal(audio.timer, null);
+  assert.deepEqual(cleared, [123]);
+});

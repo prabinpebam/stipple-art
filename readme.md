@@ -21,6 +21,51 @@ its distribution, explore it with a sharp zoomable preview, and export SVG or PN
 and white-on-black paper. Original colors, Mouse interaction, and Sound are on.
 Audio requires an initial click/tap or keypress; reduced-motion preferences
 disable particle interaction.
+Phones start with **10,000 marks**, **Fast 1K**, and **Sound off** to reduce work,
+memory, downloads, and unexpected audio; these settings remain user-adjustable.
+
+## Smartphone assessment and improvements
+
+| Area | Previous limitation | Implemented |
+| --- | --- | --- |
+| Layout | Long stacked page hid the preview and actions | Preview/Settings views, full-height dynamic viewport, shared action footer |
+| Device chrome | No notch/home-indicator allowance | Safe-area insets; visual-viewport height for browser chrome/keyboard; landscape layout |
+| Touch controls | Small slider thumbs, cramped value rows, input zoom | 44px touch targets, larger thumbs, 16px numeric inputs, two-line mobile slider rows |
+| Gestures | Single-finger panning only; particles required mouse hover | Pan/Play modes; one-finger particle interaction; two-finger pinch in both modes |
+| Responsiveness | Long rejection/refinement loops blocked input | Yielding initialization and 8ms refinement slices; Cancel generation; 100,000-mark input limit |
+| Memory/battery | 40K default and full device-density buffers | Lighter phone defaults; phone preview density capped at 2x; 4MP backing budget |
+| Audio | Eager audio on every touch | Sound opt-in on phones; idle scheduler stops; background audio suspended and Voronoi animation stopped |
+| Export | Immediate Blob URL revocation; downloads only | Delayed URL cleanup; native PNG sharing when supported with explicit download fallback |
+| Accessibility | Hidden controls still part of navigation | Inert inactive views, pressed-state view/mode buttons, retained keyboard controls and reduced-motion gating |
+
+On phones, use **Settings** to upload from the system photo/file picker and adjust
+controls. Generate returns to **Preview**; actions and progress remain reachable.
+In **Pan** mode a finger drags the canvas; in **Play** mode a finger scatters
+particles. Pinch always zooms. Canvas gestures do not steal scroll from Settings.
+Switching views stops transient particle interaction; generation continues.
+The preview keeps the same layout dimensions behind Settings, so changing views
+does not change artwork geometry or export dimensions.
+
+Native **Share PNG** requires HTTPS (or localhost), browser file-sharing support,
+and two taps: prepare the PNG, then share it from a fresh gesture. Unsupported
+devices retain Export PNG/SVG. Platform download/save destinations are controlled
+by the browser; SVG sharing is not assumed to be supported.
+
+### Remaining limitations and recommended next work
+
+- Real iOS Safari and Android hardware testing is still required: emulation does
+  not certify photo-picker codecs, OS share sheets, thermal behavior, silent-mode
+  audio, or keyboard/browser-chrome behavior.
+- Delaunay construction and scene preparation still execute on the main thread.
+  Yielding improves responsiveness but is not a worker-based computation pipeline;
+  very dense user-selected scenes can still pause. Worker generation is the next
+  performance step if real-device profiles show unacceptable delays.
+- Browser decoding may allocate source-size temporary memory. Use Fast mode on
+  memory-constrained phones; HEIC/TIFF/JXL support remains browser-dependent.
+- Offline/PWA support needs locally hosted drawing libraries and an intentional
+  cache/update strategy; the current D3 CDN resources need connectivity.
+- The modern browser baseline uses Pointer Events, inert, dynamic viewport units,
+  native Popover, and Web Audio. Older mobile browsers are not certified.
 
 ![Stipple art examples](/images/stipple-art-examples.png "Stipple art examples")
 The studio interface supports light and dark themes, a responsive canvas workspace,
@@ -86,11 +131,11 @@ The project is a static browser app with no build step:
 - `computeWeightedCentroid()` → Determines the best position for a stipple point within its Voronoi cell.
 
 ### 3. **design-system.css**
-- Centralizes the Clawpilot light/dark palette and design tokens for typography,
+- Centralizes the teal brand accents, light/dark palette, and design tokens for typography,
   spacing, radii, control sizes, borders, and motion.
 - Defines reusable buttons, fields, sliders, switches, segmented controls,
   upload cards, badges, progress cards, and panel components.
-- Adapts from a canvas-and-sidebar desktop layout to a stacked mobile layout.
+- Adapts from a canvas-and-sidebar desktop layout to Preview/Settings phone views.
 - Keeps the desktop preview nearly edge-to-edge and full-height. Branding, theme,
   introduction, privacy information, navigation help, and generation progress live
   in the side panel; only image status, a compact resolution state, and zoom
@@ -101,7 +146,7 @@ The project is a static browser app with no build step:
   larger targets.
 - Desktop scrolling is confined to the settings panel; the canvas flexes to the
   viewport height without forcing body overflow when settings or zoom change.
-  The stacked mobile layout retains normal page scrolling.
+  Mobile uses separate Preview/Settings views with independent settings scrolling.
 - Slider rows reserve separate label, numeric-value/unit, and slider columns,
   keeping row dimensions stable throughout each control's value range.
 - Proximity spacing uses 4px between a heading and its control, 8px between
@@ -234,7 +279,8 @@ filter brightness, and stereo placement respond to actual particle motion.
 The recording loads locally on the first audio-unlocking gesture, with explicit
 load/decode errors and no synthesized fallback. Serve the app over HTTP to use
 audio; browsers may block fetching the recording from a `file:` page.
-Original colors, Mouse interaction, and Sound are enabled by default.
+Original colors and particle interaction are enabled by default. Sound defaults
+on for desktop and off for phones.
 Audio is unlocked on the first click/tap or keypress (browser autoplay rules).
 Volume and filter brightness
 follow visible particle speed, while stereo position follows the speed-weighted
@@ -242,12 +288,13 @@ particle location. Returning particles keep rustling after the cursor leaves;
 settled particles are silent. Sound mutes on blur, hidden tabs, disabled interaction,
 and scene resets. It is not included in exports.
 
-With **Mouse interaction** enabled in Appearance, move the mouse over generated
+With **Particle interaction** enabled in Appearance, move the mouse over generated
 artwork. Nearby shapes repel and swirl in the cursor's wake, coast, and slowly
 return to their original positions when the cursor moves away. This is a
 preview-only effect: SVG and PNG exports always use the undisturbed artwork.
-Mouse dragging still pans; wheel zoom, touch navigation, and keyboard navigation
-are unchanged. Interaction pauses during import/refinement/Voronoi animation and
+Mouse dragging still pans; on touch, Pan/Play explicitly selects one-finger
+navigation or particle interaction, with pinch available in either mode.
+Interaction pauses during import/refinement/Voronoi animation and
 resets when the artwork changes. Reduced-motion preferences disable the effect.
 Hidden tabs discard transient motion instead of accumulating simulation time.
 
@@ -392,7 +439,7 @@ density, using the same geometry, colors, and per-mark opacity as SVG.
 5. Use **Stop animation** to keep the current pattern.
 6. Fine-tune shape, orientation, radius, variation, or original colors on the preview.
 7. Move the mouse over the artwork to scatter particles and hear the sand recording.
-   Switch off Mouse interaction or Sound if desired.
+   Switch off Particle interaction or Sound if desired.
 8. Download the final result with **Export SVG** or **Export PNG**.
 
 Generation controls are locked while rendering to prevent overlapping operations.
@@ -422,7 +469,8 @@ node --check preview-renderer.js
 node --check preview-gpu.js
 node --check particle-field.js
 node --check particle-audio.js
-node --test shape-geometry.test.js preview-viewport.test.js preview-renderer.test.js image-import.test.js particle-field.test.js particle-audio.test.js
+node --check mobile-runtime.js
+node --test shape-geometry.test.js preview-viewport.test.js preview-renderer.test.js image-import.test.js particle-field.test.js particle-audio.test.js mobile-runtime.test.js
 ```
 
 Enjoy creating beautiful stipple art!

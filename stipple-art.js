@@ -10,6 +10,7 @@ document.addEventListener("DOMContentLoaded", function() {
   const downloadSVGButton = document.getElementById('downloadSVGButton');
   const downloadPNGButton = document.getElementById('downloadPNGButton');
   let pngExporting = false;
+  let preparedShare = null;
   const progressBarContainer = document.getElementById('progressBarContainer');
   const progressBar = document.getElementById('progressBar');
   const progressValue = document.getElementById('progressValue');
@@ -100,19 +101,47 @@ document.addEventListener("DOMContentLoaded", function() {
   let globalImgData = null; // Bounded working-resolution image pixel data.
   let animationFrameID = null;
   let busyMode = null;
+  let generationJob = null;
   let cellAngles = null;
   let renderedArtwork = null;
   let sourceFile = null;
-  let appliedResolution = '2048';
+  let appliedResolution = importOption('resolutionOption');
   let hasTransparency = false;
   const importControls = document.querySelectorAll('input[name="resolutionOption"]');
+  const panModeButton = document.getElementById('panModeButton');
+  const playModeButton = document.getElementById('playModeButton');
+  const cancelButton = document.getElementById('cancelButton');
+  const shareButton = document.getElementById('shareButton');
+  shareButton.hidden = !navigator.share || !navigator.canShare;
+  function touchMode(play) {
+    viewport.touchPlay = play;
+    viewport.endGesture();
+    panModeButton.setAttribute('aria-pressed', String(!play));
+    playModeButton.setAttribute('aria-pressed', String(play));
+  }
+  panModeButton.addEventListener('click', () => touchMode(false));
+  playModeButton.addEventListener('click', () => touchMode(true));
+  canvas.addEventListener('particle-touch', event => {
+    if (!particles.enabled) return;
+    particles.move(event.detail.point.x, event.detail.point.y, event.detail.timestamp);
+    viewport.schedule();
+  });
+  canvas.addEventListener('particle-touch-end', () => particles.leave());
+  document.addEventListener('studio-view-change', () => {
+    syncMouseInteraction();
+    particleAudio.silence();
+    viewport.schedule();
+  });
 
   function syncMouseInteraction() {
     mouseInteractionSwitch.disabled = Boolean(busyMode) || reducedMotion.matches;
     mouseInteractionSwitch.title = reducedMotion.matches ? 'Disabled by your reduced-motion preference.' :
       'Move over the artwork to scatter shapes. Preview only.';
-    const enabled = mouseInteractionSwitch.checked && !busyMode && !reducedMotion.matches && Boolean(renderedArtwork);
+    const enabled = mouseInteractionSwitch.checked && !busyMode && !reducedMotion.matches &&
+      !document.getElementById('previewWorkspace').inert && Boolean(renderedArtwork);
     if (particles.enabled !== enabled) particles.setEnabled(enabled);
+    playModeButton.disabled = !enabled;
+    if (!enabled && viewport.touchPlay) touchMode(false);
     if (!enabled) particleAudio.silence();
   }
   mouseInteractionSwitch.addEventListener('change', () => {
@@ -145,6 +174,11 @@ document.addEventListener("DOMContentLoaded", function() {
       particles.reset(particles.marks);
       if (viewport.frame !== null) cancelAnimationFrame(viewport.frame);
       viewport.frame = null;
+      particleAudio.disable().catch(error => {
+        console.error('Could not suspend background audio:', error);
+        showStatus('Could not suspend background audio. Turn Sound off.', 'error');
+      });
+      if (busyMode === 'animation') stopButton.click();
     } else {
       viewport.schedule();
     }
@@ -159,8 +193,10 @@ document.addEventListener("DOMContentLoaded", function() {
     const labels = { '1024': 'Fast · 1K', '2048': 'Balanced · 2K', '4096': 'Detail · 4K' };
     const label = labels[importOption('resolutionOption')];
     document.getElementById('resolutionState').textContent = label;
+    document.getElementById('resolutionCompact').textContent = `${Number(importOption('resolutionOption')) / 1024}K`;
     document.getElementById('resolutionButton').setAttribute('aria-label', `Working resolution: ${label}. Open settings.`);
   }
+  updateResolutionState();
 
   function selectedShape() {
     return settingsForm.querySelector('input[name="shapeOption"]:checked').value;
@@ -198,6 +234,9 @@ document.addEventListener("DOMContentLoaded", function() {
     generateButton.disabled = Boolean(mode) || !image;
     downloadSVGButton.disabled = mode === 'loading' || mode === 'static' || !stipplePoints.length;
     downloadPNGButton.disabled = downloadSVGButton.disabled || pngExporting;
+    shareButton.disabled = downloadPNGButton.disabled;
+    cancelButton.hidden = mode !== 'static';
+    if (mode === 'static') cancelButton.disabled = false;
     stopButton.hidden = mode !== 'animation';
     stage.classList.toggle('is-busy', Boolean(mode));
     stage.setAttribute('aria-busy', String(Boolean(mode)));
@@ -291,15 +330,15 @@ document.addEventListener("DOMContentLoaded", function() {
     return sumW === 0 ? null : [sumX / sumW, sumY / sumW];
   }
   
-  function initializePoints(seed) {
+  async function initializePoints(seed, job) {
     if (!window.d3 || !d3.Delaunay || !d3.polygonContains) {
       throw new Error('The drawing libraries could not load. Check your connection and reload the page.');
     }
     const rng = mulberry32(seed);
     const orientationRng = mulberry32(seed ^ 0x9E3779B9);
     const desiredCount = Number(stippleCountInput.value);
-    if (!Number.isSafeInteger(desiredCount) || desiredCount < 1) {
-      throw new Error('Enter a positive whole number of dots.');
+    if (!Number.isSafeInteger(desiredCount) || desiredCount < 1 || desiredCount > 100000) {
+      throw new Error('Enter between 1 and 100,000 marks.');
     }
     const whiteCutoff = parseFloat(whiteCutoffSlider.value);
     if (whiteCutoff >= 1) {
@@ -311,6 +350,7 @@ document.addEventListener("DOMContentLoaded", function() {
     const points = [];
     const maxAttempts = desiredCount * 100;
     for (let attempts = 0; points.length < desiredCount && attempts < maxAttempts; attempts++) {
+      if (attempts % 4096 === 0) await StudioRuntime.yieldToInput(job);
       const x = rng() * image.width;
       const y = rng() * image.height;
       const brightness = getBrightness(x, y, globalImgData, image.width);
@@ -327,69 +367,65 @@ document.addEventListener("DOMContentLoaded", function() {
     cellAngles = null;
   }
 
-  function refinePoints(sampleCount) {
+  async function refinePoints(sampleCount, job) {
+    await StudioRuntime.yieldToInput(job);
     const delaunay = d3.Delaunay.from(stipplePoints.map(pt => [pt.x, pt.y]));
     const voronoi = delaunay.voronoi([0, 0, image.width, image.height]);
-    stipplePoints = stipplePoints.map((pt, i) => {
+    const nextPoints = [];
+    let deadline = performance.now() + 8;
+    for (let i = 0; i < stipplePoints.length; i++) {
+      if (performance.now() >= deadline) {
+        await StudioRuntime.yieldToInput(job);
+        deadline = performance.now() + 8;
+      }
+      const pt = stipplePoints[i];
       const cell = voronoi.cellPolygon(i);
-      if (!cell) return pt;
-      const centroid = computeWeightedCentroid(cell, globalImgData, image.width, sampleCount);
-      if (!centroid) return pt;
-      const [x, y] = centroid;
-      if (getColor(x, y, globalImgData, image.width).alpha === 0) return pt;
-      return { ...pt, x, y };
-    });
+      const centroid = cell ? computeWeightedCentroid(cell, globalImgData, image.width, sampleCount) : null;
+      if (centroid && getColor(centroid[0], centroid[1], globalImgData, image.width).alpha !== 0) {
+        nextPoints.push({ ...pt, x: centroid[0], y: centroid[1] });
+      } else nextPoints.push(pt);
+    }
+    await StudioRuntime.yieldToInput(job);
+    stipplePoints = nextPoints;
     cellAngles = null;
   }
 
-  function generateStippleArt(seed) {
-    return new Promise((resolve, reject) => {
+  async function generateStippleArt(seed, job) {
       const iterations = Number(iterationCountSlider.value);
       const sampleCount = Number(sampleCountSlider.value);
-      let currentIteration = 0;
       updateProgress(0);
       progressBarContainer.hidden = false;
-      function iterate() {
-        try {
-          if (currentIteration === 0) initializePoints(seed);
-          refinePoints(sampleCount);
-          currentIteration++;
+      await initializePoints(seed, job);
+      for (let currentIteration = 1; currentIteration <= iterations; currentIteration++) {
+          await refinePoints(sampleCount, job);
           updateProgress(Math.floor(currentIteration / iterations * 100));
           renderStippleArt();
-          if (currentIteration < iterations) {
-            requestAnimationFrame(iterate);
-          } else {
-            progressBarContainer.hidden = true;
-            resolve();
-          }
-        } catch (error) {
-          reject(error);
-        }
       }
-      requestAnimationFrame(iterate);
-    });
+      progressBarContainer.hidden = true;
   }
 
   // Animation mode: continuously iterate at ~12 fps.
-  function animateVoronoi(seed) {
-    initializePoints(seed);
+  async function animateVoronoi(seed, job) {
+    await initializePoints(seed, job);
     renderStippleArt();
     setBusy('animation');
     const sampleCount = Number(sampleCountSlider.value);
     
     let lastIterationTime = 0;
-    function animateIteration(timestamp) {
+    async function animateIteration(timestamp) {
       try {
         if (!lastIterationTime) lastIterationTime = timestamp;
         if (timestamp - lastIterationTime >= 80) {
-          refinePoints(sampleCount);
+          await refinePoints(sampleCount, job);
           renderStippleArt();
           lastIterationTime = timestamp;
         }
         animationFrameID = requestAnimationFrame(animateIteration);
       } catch (error) {
-        animationFrameID = null;
-        reportError(error);
+        if (generationJob === job) {
+          animationFrameID = null;
+          if (error.name !== 'AbortError') reportError(error);
+        }
       }
     }
     animationFrameID = requestAnimationFrame(animateIteration);
@@ -445,6 +481,8 @@ document.addEventListener("DOMContentLoaded", function() {
 
   // Retain the exact rendered geometry and colors for SVG export.
   function renderStippleArt() {
+    preparedShare = null;
+    shareButton.textContent = 'Share PNG';
     renderedArtwork = null;
     stage.dataset.paper = currentStippleColor === 'white' ? 'dark' : 'light';
     stage.classList.toggle('has-image', Boolean(image));
@@ -506,7 +544,7 @@ document.addEventListener("DOMContentLoaded", function() {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
   function downloadSVG() {
@@ -519,14 +557,16 @@ document.addEventListener("DOMContentLoaded", function() {
     }
   }
 
-  async function downloadPNG() {
+  async function downloadPNG(share = false) {
       if (pngExporting) return;
       let url, output;
       try {
         const svg = createSVG();
+        const artworkSnapshot = renderedArtwork;
         const { width, height } = renderedArtwork;
         pngExporting = true;
         downloadPNGButton.disabled = true;
+        shareButton.disabled = true;
         url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
         const snapshot = new Image();
         await new Promise((resolve, reject) => {
@@ -546,8 +586,16 @@ document.addEventListener("DOMContentLoaded", function() {
             else reject(new Error('The browser could not encode the PNG export.'));
           }, 'image/png');
         });
-        saveBlob(blob, 'stipple_art.png');
-        showStatus('PNG exported.');
+        if (share) {
+          if (renderedArtwork !== artworkSnapshot) throw new Error('Artwork changed while preparing the share. Try again.');
+          const file = new File([blob], 'stipple_art.png', { type: 'image/png' });
+          preparedShare = file;
+          shareButton.textContent = 'Share PNG';
+          showStatus('PNG ready. Tap Share PNG to choose where to save it.');
+        } else {
+          saveBlob(blob, 'stipple_art.png');
+          showStatus('PNG exported.');
+        }
       } catch (error) {
         console.error('Error exporting PNG:', error);
         showStatus(error.message, 'error');
@@ -556,6 +604,8 @@ document.addEventListener("DOMContentLoaded", function() {
         if (output) output.width = output.height = 0;
         pngExporting = false;
         downloadPNGButton.disabled = downloadSVGButton.disabled;
+        shareButton.disabled = downloadPNGButton.disabled;
+        shareButton.textContent = 'Share PNG';
       }
   }
   
@@ -633,30 +683,65 @@ document.addEventListener("DOMContentLoaded", function() {
       showStatus('Enter a whole-number seed within the safe integer range.', 'error');
       return;
     }
+    document.dispatchEvent(new Event('studio-show-preview'));
+    const job = { cancelled: false };
+    generationJob = job;
+    const previousPoints = stipplePoints;
+    setBusy('static');
     if (animateVoronoiSwitch.checked) {
-      try {
-        animateVoronoi(seed);
+        animateVoronoi(seed, job).then(() => {
         showStatus('Your pattern is evolving. Stop when it feels right.');
-      } catch (error) {
-        reportError(error);
-      }
+        }).catch(error => finishGenerationError(error, previousPoints, job));
     } else {
-      setBusy('static');
       showStatus('Refining your dots...');
-      generateStippleArt(seed)
+      generateStippleArt(seed, job)
         .then(() => {
           setBusy(null);
           showStatus('Artwork ready. Fine-tune the appearance or export your SVG.');
         })
-        .catch(reportError);
+        .catch(error => finishGenerationError(error, previousPoints, job));
     }
   });
+  settingsForm.addEventListener('invalid', () => {
+    document.dispatchEvent(new Event('studio-show-settings'));
+  }, true);
 
   stopButton.addEventListener('click', () => {
+    if (generationJob) generationJob.cancelled = true;
     if (animationFrameID) cancelAnimationFrame(animationFrameID);
     animationFrameID = null;
     setBusy(null);
     showStatus('Animation stopped. Your artwork is ready to export.');
+  });
+  cancelButton.addEventListener('click', () => {
+    if (busyMode !== 'static' || !generationJob) return;
+    if (generationJob) generationJob.cancelled = true;
+    cancelButton.disabled = true;
+    showStatus('Cancelling generation...');
+  });
+  function finishGenerationError(error, previousPoints, job) {
+    if (generationJob !== job) return;
+    if (error.name === 'AbortError') {
+      console.info('Stipple Studio: generation cancelled by user.');
+      stipplePoints = previousPoints;
+      cellAngles = null;
+      progressBarContainer.hidden = true;
+      renderStippleArt();
+      setBusy(null);
+      cancelButton.disabled = false;
+      showStatus('Generation cancelled.');
+    } else reportError(error);
+  }
+  shareButton.addEventListener('click', async () => {
+    if (!preparedShare) { shareButton.textContent = 'Preparing...'; await downloadPNG(true); return; }
+    try {
+      if (!navigator.canShare({ files: [preparedShare] })) throw new Error('File sharing is unavailable. Use Export PNG instead.');
+      await navigator.share({ files: [preparedShare], title: 'Stipple art' });
+      showStatus('Artwork shared.');
+    } catch (error) {
+      if (error.name === 'AbortError') showStatus('Sharing cancelled.');
+      else { console.error('Share PNG:', error); showStatus(error.message, 'error'); }
+    }
   });
 
   [...shapeInputs, ...orientationInputs].forEach(input => {
@@ -680,5 +765,5 @@ document.addEventListener("DOMContentLoaded", function() {
   downloadSVGButton.addEventListener('click', function() {
     downloadSVG();
   });
-  downloadPNGButton.addEventListener('click', downloadPNG);
+  downloadPNGButton.addEventListener('click', () => downloadPNG());
 });

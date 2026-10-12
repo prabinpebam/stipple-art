@@ -26,6 +26,7 @@
       this.enabled = false;
       this.frame = null;
       this.pointers = new Map();
+      this.touchPlay = false;
       this.width = stage.clientWidth;
       this.height = stage.clientHeight;
       this.out = document.getElementById('zoomOutButton');
@@ -65,6 +66,11 @@
         stage.focus({ preventScroll: true });
         canvas.setPointerCapture(event.pointerId);
         this.pointers.set(event.pointerId, this.localPoint(event));
+        if (event.pointerType !== 'mouse' && this.touchPlay && this.pointers.size === 1) {
+          canvas.dispatchEvent(new CustomEvent('particle-touch', { detail: { point: this.localPoint(event), timestamp: event.timeStamp } }));
+        } else {
+          canvas.dispatchEvent(new Event('particle-touch-end'));
+        }
         stage.classList.add('is-panning');
       });
       canvas.addEventListener('pointermove', event => {
@@ -74,7 +80,9 @@
         const next = this.localPoint(event);
         this.pointers.set(event.pointerId, next);
         if (this.pointers.size === 1) {
-          this.pan(next.x - previous.x, next.y - previous.y);
+          if (event.pointerType !== 'mouse' && this.touchPlay) {
+            canvas.dispatchEvent(new CustomEvent('particle-touch', { detail: { point: next, timestamp: event.timeStamp } }));
+          } else this.pan(next.x - previous.x, next.y - previous.y);
         } else {
           const newPoints = [...this.pointers.values()];
           const midpoint = points => ({ x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2 });
@@ -86,6 +94,7 @@
         }
       });
       const finish = event => {
+        canvas.dispatchEvent(new Event('particle-touch-end'));
         this.pointers.delete(event.pointerId);
         if (!this.pointers.size) stage.classList.remove('is-panning');
       };
@@ -106,6 +115,7 @@
     }
 
     endGesture() {
+      this.canvas.dispatchEvent(new Event('particle-touch-end'));
       const ids = [...this.pointers.keys()];
       this.pointers.clear();
       ids.forEach(id => {

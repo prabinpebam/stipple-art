@@ -81,6 +81,10 @@
       const values = motionSound(motion, width), time = this.context.currentTime;
       this.motion = { ...motion };
       this.lastUpdate = time;
+      if (motion.speed > 0.05 && this.timer === null) {
+        this.scheduleGrains();
+        this.timer = setInterval(() => this.scheduleGrains(), 40);
+      }
       this.gain.gain.setTargetAtTime(values.gain, time, 0.06);
       this.filter.frequency.setTargetAtTime(values.frequency, time, 0.1);
       this.panner.pan.setTargetAtTime(values.pan, time, 0.08);
@@ -111,6 +115,8 @@
       if (now - this.lastUpdate > 0.25 || this.motion.speed < 0.05) {
         this.gain.gain.setTargetAtTime(0, now, 0.06);
         this.nextGrain = now;
+        if (this.timer !== null) clearInterval(this.timer);
+        this.timer = null;
         return;
       }
       this.nextGrain = Math.max(now, this.nextGrain);

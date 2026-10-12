@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="Turn images into expressive dot artwork with Stipple Studio. Create, refine, and export your own weighted Voronoi stipple art.">
   <title>Stipple Studio - Image to dot art</title>
   <script>
@@ -13,6 +13,7 @@
       document.documentElement.setAttribute("data-theme", theme);
     })();
   </script>
+  <script src="mobile-runtime.js"></script>
   <script src="studio-ui.js"></script>
   <link rel="stylesheet" href="design-system.css">
 </head>
@@ -34,12 +35,21 @@
     <symbol id="icon-fit" viewBox="0 0 24 24"><path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/></symbol>
   </svg>
 
-  <main class="studio">
-    <section class="workspace" aria-label="Preview workspace">
+  <main class="studio" data-mobile-view="preview">
+    <nav class="mobile-navigation" aria-label="Studio views">
+      <button class="button button--secondary" id="previewViewButton" type="button" aria-controls="previewWorkspace" aria-pressed="true">Preview</button>
+      <button class="button button--secondary" id="settingsViewButton" type="button" aria-controls="settingsPanel" aria-pressed="false">Settings</button>
+    </nav>
+    <section class="workspace" id="previewWorkspace" aria-label="Preview workspace">
       <div class="preview-panel">
         <div class="preview-toolbar">
           <span class="toolbar-title"><svg class="icon"><use href="#icon-image"/></svg> <span id="previewTitle">Your canvas</span></span>
           <span class="badge badge--soft" id="previewState">No image yet</span>
+        </div>
+        <div class="touch-tools" role="group" aria-label="Touch gesture mode">
+          <button class="button button--secondary" id="panModeButton" type="button" aria-pressed="true">Pan</button>
+          <button class="button button--secondary" id="playModeButton" type="button" aria-pressed="false" disabled>Play</button>
+          <span class="text-small text-muted">Pinch to zoom</span>
         </div>
         <div id="renderArea" class="canvas-stage" tabindex="0" role="region" aria-label="Artwork preview" aria-describedby="previewHelp">
           <canvas id="stippleCanvas" aria-label="Image preview and generated stipple artwork"></canvas>
@@ -47,19 +57,19 @@
             <div class="dot-art" aria-hidden="true"></div>
             <span class="eyebrow">SMALL DOTS. BIG IDEAS.</span>
             <h2>Start with an image</h2>
-            <p>Drop your favorite photo here.<br>We'll help you see it in a whole new way.</p>
+            <p>Choose a photo to create your artwork.</p>
             <button class="button button--primary" id="emptyUploadButton" type="button"><svg class="icon"><use href="#icon-upload"/></svg> Choose an image</button>
-            <span class="text-small text-muted">Or drag and drop an image onto the canvas</span>
+            <span class="text-small text-muted empty-drop-hint">Or drag and drop an image onto the canvas</span>
           </div>
           <div class="drop-overlay" aria-hidden="true"><svg class="icon"><use href="#icon-upload"/></svg><span>Drop your image here</span></div>
         </div>
         <div class="preview-footer">
-          <button class="button button--quiet resolution-state" id="resolutionButton" type="button" popovertarget="resolutionPopover" aria-expanded="false" aria-label="Working resolution: Balanced, 2K. Open settings."><span id="resolutionState">Balanced · 2K</span><span class="chevron" aria-hidden="true"></span></button>
+          <button class="button button--quiet resolution-state" id="resolutionButton" type="button" popovertarget="resolutionPopover" aria-expanded="false" aria-label="Working resolution: Balanced, 2K. Open settings."><span id="resolutionState">Balanced · 2K</span><span id="resolutionCompact" aria-hidden="true">2K</span><span class="chevron" aria-hidden="true"></span></button>
           <div class="zoom-controls" role="group" aria-label="Preview zoom">
             <button class="button button--secondary button--icon" id="zoomOutButton" type="button" aria-label="Zoom out" title="Zoom out (-)" disabled><svg class="icon" aria-hidden="true"><use href="#icon-minus"/></svg></button>
             <output id="zoomValue" aria-label="Zoom level relative to fit">100%</output>
             <button class="button button--secondary button--icon" id="zoomInButton" type="button" aria-label="Zoom in" title="Zoom in (+)" disabled><svg class="icon" aria-hidden="true"><use href="#icon-plus"/></svg></button>
-            <button class="button button--secondary" id="zoomFitButton" type="button" title="Fit artwork (0)" disabled><svg class="icon" aria-hidden="true"><use href="#icon-fit"/></svg>Fit</button>
+            <button class="button button--secondary" id="zoomFitButton" type="button" aria-label="Fit artwork" title="Fit artwork (0)" disabled><svg class="icon" aria-hidden="true"><use href="#icon-fit"/></svg><span class="zoom-fit-label">Fit</span></button>
           </div>
           <div class="resolution-popover" id="resolutionPopover" popover aria-labelledby="resolutionLabel">
             <div class="field">
@@ -79,7 +89,7 @@
       </div>
     </section>
 
-    <aside class="settings-panel" aria-labelledby="settingsTitle">
+    <aside class="settings-panel" id="settingsPanel" aria-labelledby="settingsTitle">
       <div class="settings-scroll">
       <header class="app-header">
         <a class="brand" href="./" aria-label="Stipple Studio home, created by Prabin Pebam">
@@ -104,9 +114,9 @@
 
         <fieldset class="control-section">
           <legend>Distribution</legend>
-          <div class="field field--inline"><label for="stippleCount">Marks</label><input class="input" type="number" id="stippleCount" value="40000" min="1" step="1" required title="More marks add detail and take longer to render."></div>
+          <div class="field field--inline"><label for="stippleCount">Marks</label><input class="input" type="number" id="stippleCount" value="40000" min="1" max="100000" step="1" inputmode="numeric" required title="More marks add detail and take longer to render. Maximum 100,000."></div>
           <div class="field"><div class="field-heading"><label for="iterationCount">Refinement</label><output for="iterationCount" id="iterationCountVal">10</output></div><input class="range" type="range" id="iterationCount" min="10" max="100" value="10"><div class="range-labels"><span>Quick sketch</span><span>Fine detail</span></div></div>
-          <div class="field field--inline"><label for="randomSeed">Seed</label><input class="input input--mono" type="number" id="randomSeed" value="42" step="1" required title="Starting arrangement of the marks."></div>
+          <div class="field field--inline"><label for="randomSeed">Seed</label><input class="input input--mono" type="number" id="randomSeed" value="42" step="1" inputmode="numeric" required title="Starting arrangement of the marks."></div>
         </fieldset>
 
         <fieldset class="control-section">
@@ -150,7 +160,7 @@
             <p class="field-hint">Paper color is independent of the app theme.</p>
           </div>
           <label class="switch-row" for="colorizeDots"><span><strong>Original colors</strong><span>Sample color from your image</span></span><input class="switch" type="checkbox" role="switch" id="colorizeDots" checked></label>
-          <label class="switch-row interaction-toggle" for="mouseInteraction" title="Move over the artwork to scatter shapes. They return when the cursor moves away. Preview only."><span><strong>Mouse interaction</strong></span><input class="switch" type="checkbox" role="switch" id="mouseInteraction" checked></label>
+          <label class="switch-row interaction-toggle" for="mouseInteraction" title="Move over the artwork or use touch Play to scatter shapes. Preview only."><span><strong>Particle interaction</strong></span><input class="switch" type="checkbox" role="switch" id="mouseInteraction" checked></label>
           <label class="switch-row" for="particleSound" title="Sand-like sound follows particle movement"><span><strong>Sound</strong></span><input class="switch" type="checkbox" role="switch" id="particleSound" checked></label>
         </fieldset>
 
@@ -180,10 +190,12 @@
         <p class="status-message" id="studioStatus" role="status" aria-live="polite">Choose an image to get started.</p>
         <button id="generateButton" type="submit" form="settingsForm" class="button button--primary button--full" disabled><svg class="icon"><use href="#icon-spark"/></svg><span>Generate stipple art</span></button>
         <button id="stopButton" type="button" class="button button--secondary button--full" hidden><svg class="icon"><use href="#icon-stop"/></svg>Stop animation</button>
+        <button id="cancelButton" type="button" class="button button--secondary button--full" hidden>Cancel generation</button>
         <div class="export-actions">
           <button id="downloadSVGButton" type="button" class="button button--secondary" disabled><svg class="icon" aria-hidden="true"><use href="#icon-download"/></svg>Export SVG</button>
           <button id="downloadPNGButton" type="button" class="button button--secondary" disabled><svg class="icon" aria-hidden="true"><use href="#icon-download"/></svg>Export PNG</button>
         </div>
+        <button id="shareButton" type="button" class="button button--secondary button--full" disabled hidden>Share PNG</button>
         <span class="action-caption">Vector artwork. Ready for any size.</span>
       </footer>
     </aside>

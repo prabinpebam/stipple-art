@@ -90,6 +90,7 @@ test('zoom, pan, and fit bursts coalesce into one draw of the latest view', t =>
     width: 800, height: 600, enabled: true, frame: null,
     view: { zoom: 1, x: 0, y: 0 }, pointers: new Map(),
     stage: { classList: { remove() {} } },
+    canvas: { dispatchEvent() {} },
     out: {}, into: {}, fit: {}, output: {}
   });
   const drawn = [];
