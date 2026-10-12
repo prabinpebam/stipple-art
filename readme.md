@@ -15,7 +15,7 @@ its distribution, explore it with a sharp zoomable preview, and export SVG or PN
 - Pixel-density-aware WebGL2 preview, with a Canvas 2D fallback and zoom/pan gestures.
 - Optional cursor repulsion, fluid-like agitation, and damped return to the artwork.
 - Real sand audio with overlapping crossfaded grains driven by particle movement.
-- Pinned generation controls and side-by-side SVG / PNG exports.
+- Pinned Generate / Export actions with format, PNG resolution, and sharing in a dialog.
 
 **Defaults:** 40,000 marks, 10 refinement passes, Balanced 2K resolution, dots,
 and white-on-black paper. Original colors, Mouse interaction, and Sound are on.
@@ -31,7 +31,7 @@ memory, downloads, and unexpected audio; these settings remain user-adjustable.
 | Layout | Long stacked page hid the preview and actions | Preview/Settings views, full-height dynamic viewport, shared action footer |
 | Device chrome | No notch/home-indicator allowance | Safe-area insets; visual-viewport height for browser chrome/keyboard; landscape layout |
 | Touch controls | Small slider thumbs, cramped value rows, input zoom | 44px touch targets, larger thumbs, 16px numeric inputs, two-line mobile slider rows |
-| Gestures | Single-finger panning only; particles required mouse hover | Pan/Play modes; one-finger particle interaction; two-finger pinch in both modes |
+| Gestures | Single-finger panning only; particles required mouse hover | One finger plays; two fingers pan and pinch, without mode buttons |
 | Responsiveness | Long rejection/refinement loops blocked input | Yielding initialization and 8ms refinement slices; Cancel generation; 100,000-mark input limit |
 | Memory/battery | 40K default and full device-density buffers | Lighter phone defaults; phone preview density capped at 2x; 4MP backing budget |
 | Audio | Eager audio on every touch | Sound opt-in on phones; idle scheduler stops; background audio suspended and Voronoi animation stopped |
@@ -40,16 +40,17 @@ memory, downloads, and unexpected audio; these settings remain user-adjustable.
 
 On phones, use **Settings** to upload from the system photo/file picker and adjust
 controls. Generate returns to **Preview**; actions and progress remain reachable.
-In **Pan** mode a finger drags the canvas; in **Play** mode a finger scatters
-particles. Pinch always zooms. Canvas gestures do not steal scroll from Settings.
+One finger scatters particles; two fingers pan and pinch to zoom.
+Canvas gestures do not steal scroll from Settings.
 Switching views stops transient particle interaction; generation continues.
 The preview keeps the same layout dimensions behind Settings, so changing views
 does not change artwork geometry or export dimensions.
 
-Native **Share PNG** requires HTTPS (or localhost), browser file-sharing support,
-and two taps: prepare the PNG, then share it from a fresh gesture. Unsupported
-devices retain Export PNG/SVG. Platform download/save destinations are controlled
-by the browser; SVG sharing is not assumed to be supported.
+Native **Share** in the export dialog requires HTTPS (or localhost) and browser
+file-sharing support. Files are prepared before Share becomes available, so the
+share call retains a fresh tap's user activation. Download remains available when
+sharing is unsupported, denied, or cancelled. SVG sharing is checked per device
+and is not assumed to be supported.
 
 ### Remaining limitations and recommended next work
 
@@ -125,8 +126,7 @@ The project is a static browser app with no build step:
 - `generateStippleArt()` → Generates stipple points and iteratively refines their positions.
 - `renderStippleArt()` → Draws the stipple points onto the canvas.
 - `animateVoronoi()` → Continuously animates the stippling process.
-- `downloadSVG()` → Converts stipple art to an SVG format for download.
-- `downloadPNG()` → Renders the same full artwork snapshot as PNG.
+- `ArtworkExport` → Prepares an artwork snapshot for SVG/PNG download or native sharing.
 - `getBrightness()` → Extracts brightness values from the uploaded image.
 - `computeWeightedCentroid()` → Determines the best position for a stipple point within its Voronoi cell.
 
@@ -138,8 +138,8 @@ The project is a static browser app with no build step:
 - Adapts from a canvas-and-sidebar desktop layout to Preview/Settings phone views.
 - Keeps the desktop preview nearly edge-to-edge and full-height. Branding, theme,
   introduction, privacy information, navigation help, and generation progress live
-  in the side panel; only image status, a compact resolution state, and zoom
-  controls surround the canvas.
+  in the side panel. Filename/count appear together in the desktop preview footer
+  and are hidden on mobile; resolution and zoom controls remain in that footer.
 - Uses compact property-panel spacing, inline numeric fields, and single-row
   shape/orientation pickers. Routine hints are not shown in the sidebar; detailed
   image information remains in the resolution popover. Touch controls retain
@@ -205,6 +205,12 @@ The project is a static browser app with no build step:
 - Pan toward moving particles; mute at rest and suspend when Sound is switched off.
 - Use a low-pass filter to retain more of the sample and compression to tame peaks.
 - Record the source and license in [audio/LICENSE.txt](audio/LICENSE.txt).
+
+### 11. **artwork-export.js**
+- Owns the modal export workflow, snapshot, preparation state, and native sharing.
+- Serializes the original geometry and opacity into SVG without a source mask.
+- Renders PNG at preview size or a 1K/2K/4K longest edge, preserving aspect ratio.
+- Cancels outdated preparation when options change or the dialog closes.
 
 ## Large images and image formats
 
@@ -292,8 +298,9 @@ With **Particle interaction** enabled in Appearance, move the mouse over generat
 artwork. Nearby shapes repel and swirl in the cursor's wake, coast, and slowly
 return to their original positions when the cursor moves away. This is a
 preview-only effect: SVG and PNG exports always use the undisturbed artwork.
-Mouse dragging still pans; on touch, Pan/Play explicitly selects one-finger
-navigation or particle interaction, with pinch available in either mode.
+Mouse dragging still pans. One touch finger plays with particles; two touch
+fingers pan and pinch. If particle interaction is disabled, one finger does
+nothing; two-finger navigation remains available.
 Interaction pauses during import/refinement/Voronoi animation and
 resets when the artwork changes. Reduced-motion preferences disable the effect.
 Hidden tabs discard transient motion instead of accumulating simulation time.
@@ -339,7 +346,7 @@ controls. Zoom ranges from **25% to 800%**, relative to the fitted canvas
   Scroll elsewhere to scroll the page or settings.
 - Drag with the primary or middle mouse button to pan. Pointer capture keeps the
   drag active when the pointer leaves the preview.
-- On touch, drag with one finger to pan or pinch with two fingers to zoom and pan.
+- On touch, use one finger for particles, or two fingers to pan/pinch.
 - Double-click to zoom in; Shift-double-click to zoom out.
 - With the preview focused, use **+ / -** to zoom, **arrow keys** to pan, and
   **0** or **Home** to fit.
@@ -426,27 +433,57 @@ Bootstrap and jQuery are not required.
 
 ## Usage
 
-Generate and export actions stay in the bottom footer while desktop settings
-scroll independently. **Export SVG** and **Export PNG** share one row. PNG exports
-the full artwork at logical preview dimensions, independent of zoom and display
-density, using the same geometry, colors, and per-mark opacity as SVG.
+**Generate** and **Export** share a pinned footer row. During generation, Cancel
+replaces Generate; during continuous refinement, Stop replaces it. Export is
+disabled until artwork is ready and during static generation.
+
+The export dialog captures the artwork when opened, excluding transient particle
+movement and preview zoom. Choose SVG for scalable vectors or PNG at preview size,
+1K, 2K (default), or 4K longest edge. The dialog shows actual pixel dimensions and
+PNG render-buffer cost; output is capped at 8,192px per edge and 16 megapixels.
+Transparency and painter order are retained. Changing options cancels stale
+preparation, and Close/Escape discards it. Download/Share enable only when ready.
+Share is hidden without native support and disabled for unsupported file types.
+Cancelling the OS share sheet does not discard the prepared download.
 
 1. Upload an image.
-2. Adjust Marks, Refinement, Seed, shape, Radius, and Ink & paper.
-3. Click **Generate stipple art**. The initial preview is refined over 10 passes
+2. Adjust Dot count, Refinement, Seed, shape, Radius, and Ink & paper.
+3. Click **Generate**. The initial preview is refined over 10 passes
    by default, with progress shown in the sidebar.
 4. (Optional) Enable **Animate** under Advanced to continuously refine the pattern.
 5. Use **Stop animation** to keep the current pattern.
 6. Fine-tune shape, orientation, radius, variation, or original colors on the preview.
 7. Move the mouse over the artwork to scatter particles and hear the sand recording.
    Switch off Particle interaction or Sound if desired.
-8. Download the final result with **Export SVG** or **Export PNG**.
+8. Open **Export**, choose format/resolution, and Download or Share.
 
 Generation controls are locked while rendering to prevent overlapping operations.
 Uploading a new image resets the artwork and export state. Unsupported or unreadable
 images show an inline error. If the image and cutoff cannot yield enough dots,
 generation reports an error instead of looping indefinitely; lower the cutoff or
 change ink/paper and try again.
+
+## Browser and home-screen icons
+
+The teal stipple mark in `icons/stipple-icon.svg` is the icon master. Browser
+tabs use SVG with 32px PNG and multi-size ICO fallbacks. iOS uses the explicitly
+linked opaque 180px Apple touch icon; Android uses the manifest's 192px/512px
+PNG icons and its separate maskable icon. The artwork sits within the maskable
+circular safe area, and icons have full-bleed backgrounds without pre-rounded
+corners so each OS can apply its own shape.
+
+`site.webmanifest` defines the name, standalone display, theme/background colors,
+and relative identity/start/scope URLs that resolve correctly under `/stipple-art/`.
+On iOS, open the site in Safari and choose **Share → Add to Home Screen**.
+On Android, use the browser's **Add to Home screen** or **Install** option where
+available. This enables home-screen branding and standalone launch, not offline
+operation: drawing libraries still need connectivity. Browser install prompts
+are not guaranteed. Existing pinned icons may need to be removed and re-added
+because OS icon caches can outlive a page refresh.
+
+Icon dimensions, ICO entries, mask safety, and project-scoped manifest URLs have
+regression tests in `site-icons.test.js`. Actual iOS/Android pinning must still
+be checked on hardware.
 
 ## Local development
 
@@ -470,7 +507,8 @@ node --check preview-gpu.js
 node --check particle-field.js
 node --check particle-audio.js
 node --check mobile-runtime.js
-node --test shape-geometry.test.js preview-viewport.test.js preview-renderer.test.js image-import.test.js particle-field.test.js particle-audio.test.js mobile-runtime.test.js
+node --check artwork-export.js
+node --test shape-geometry.test.js preview-viewport.test.js preview-renderer.test.js image-import.test.js particle-field.test.js particle-audio.test.js mobile-runtime.test.js site-icons.test.js artwork-export.test.js
 ```
 
 Enjoy creating beautiful stipple art!

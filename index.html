@@ -5,6 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="Turn images into expressive dot artwork with Stipple Studio. Create, refine, and export your own weighted Voronoi stipple art.">
   <title>Stipple Studio - Image to dot art</title>
+  <meta name="theme-color" content="#0f766e">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Stipple Studio">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
+  <link rel="icon" type="image/png" href="icons/favicon-32.png" sizes="32x32">
+  <link rel="icon" type="image/svg+xml" href="icons/stipple-icon.svg" sizes="any">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" sizes="180x180">
+  <link rel="manifest" href="site.webmanifest">
   <script>
     (() => {
       const param = new URLSearchParams(window.location.search).get("scoutTheme");
@@ -42,15 +52,6 @@
     </nav>
     <section class="workspace" id="previewWorkspace" aria-label="Preview workspace">
       <div class="preview-panel">
-        <div class="preview-toolbar">
-          <span class="toolbar-title"><svg class="icon"><use href="#icon-image"/></svg> <span id="previewTitle">Your canvas</span></span>
-          <span class="badge badge--soft" id="previewState">No image yet</span>
-        </div>
-        <div class="touch-tools" role="group" aria-label="Touch gesture mode">
-          <button class="button button--secondary" id="panModeButton" type="button" aria-pressed="true">Pan</button>
-          <button class="button button--secondary" id="playModeButton" type="button" aria-pressed="false" disabled>Play</button>
-          <span class="text-small text-muted">Pinch to zoom</span>
-        </div>
         <div id="renderArea" class="canvas-stage" tabindex="0" role="region" aria-label="Artwork preview" aria-describedby="previewHelp">
           <canvas id="stippleCanvas" aria-label="Image preview and generated stipple artwork"></canvas>
           <div class="empty-state" id="emptyState">
@@ -65,6 +66,7 @@
         </div>
         <div class="preview-footer">
           <button class="button button--quiet resolution-state" id="resolutionButton" type="button" popovertarget="resolutionPopover" aria-expanded="false" aria-label="Working resolution: Balanced, 2K. Open settings."><span id="resolutionState">Balanced · 2K</span><span id="resolutionCompact" aria-hidden="true">2K</span><span class="chevron" aria-hidden="true"></span></button>
+          <div class="preview-metadata"><span id="previewTitle" title="Your canvas">Your canvas</span><span aria-hidden="true">&middot;</span><span id="previewState">No image yet</span></div>
           <div class="zoom-controls" role="group" aria-label="Preview zoom">
             <button class="button button--secondary button--icon" id="zoomOutButton" type="button" aria-label="Zoom out" title="Zoom out (-)" disabled><svg class="icon" aria-hidden="true"><use href="#icon-minus"/></svg></button>
             <output id="zoomValue" aria-label="Zoom level relative to fit">100%</output>
@@ -114,7 +116,7 @@
 
         <fieldset class="control-section">
           <legend>Distribution</legend>
-          <div class="field field--inline"><label for="stippleCount">Marks</label><input class="input" type="number" id="stippleCount" value="40000" min="1" max="100000" step="1" inputmode="numeric" required title="More marks add detail and take longer to render. Maximum 100,000."></div>
+          <div class="field field--inline"><label for="stippleCount">Dot count</label><input class="input" type="number" id="stippleCount" value="40000" min="1" max="100000" step="1" inputmode="numeric" required title="More dots add detail and take longer to render. Maximum 100,000."></div>
           <div class="field"><div class="field-heading"><label for="iterationCount">Refinement</label><output for="iterationCount" id="iterationCountVal">10</output></div><input class="range" type="range" id="iterationCount" min="10" max="100" value="10"><div class="range-labels"><span>Quick sketch</span><span>Fine detail</span></div></div>
           <div class="field field--inline"><label for="randomSeed">Seed</label><input class="input input--mono" type="number" id="randomSeed" value="42" step="1" inputmode="numeric" required title="Starting arrangement of the marks."></div>
         </fieldset>
@@ -160,7 +162,7 @@
             <p class="field-hint">Paper color is independent of the app theme.</p>
           </div>
           <label class="switch-row" for="colorizeDots"><span><strong>Original colors</strong><span>Sample color from your image</span></span><input class="switch" type="checkbox" role="switch" id="colorizeDots" checked></label>
-          <label class="switch-row interaction-toggle" for="mouseInteraction" title="Move over the artwork or use touch Play to scatter shapes. Preview only."><span><strong>Particle interaction</strong></span><input class="switch" type="checkbox" role="switch" id="mouseInteraction" checked></label>
+          <label class="switch-row interaction-toggle" for="mouseInteraction" title="Move over the artwork or drag one finger to scatter shapes. Preview only."><span><strong>Particle interaction</strong></span><input class="switch" type="checkbox" role="switch" id="mouseInteraction" checked></label>
           <label class="switch-row" for="particleSound" title="Sand-like sound follows particle movement"><span><strong>Sound</strong></span><input class="switch" type="checkbox" role="switch" id="particleSound" checked></label>
         </fieldset>
 
@@ -175,7 +177,7 @@
       </form>
       <details class="control-section advanced-settings">
         <summary>Navigation <span class="chevron" aria-hidden="true"></span></summary>
-        <p class="preview-help" id="previewHelp">Scroll to zoom. Drag to pan. Pinch on touch. With the preview focused, use + / - to zoom, arrow keys to pan, and 0 to fit.</p>
+        <p class="preview-help" id="previewHelp">One finger plays with particles. Two fingers pan and pinch to zoom. With a mouse, drag to pan and scroll to zoom. Keyboard: + / - to zoom, arrows to pan, 0 to fit.</p>
       </details>
       <details class="control-section advanced-settings">
         <summary>About <span class="chevron" aria-hidden="true"></span></summary>
@@ -188,18 +190,42 @@
           <div class="progress-track"><div id="progressBar" class="progress-fill" role="progressbar" aria-label="Generation progress" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div></div>
         </div>
         <p class="status-message" id="studioStatus" role="status" aria-live="polite">Choose an image to get started.</p>
-        <button id="generateButton" type="submit" form="settingsForm" class="button button--primary button--full" disabled><svg class="icon"><use href="#icon-spark"/></svg><span>Generate stipple art</span></button>
-        <button id="stopButton" type="button" class="button button--secondary button--full" hidden><svg class="icon"><use href="#icon-stop"/></svg>Stop animation</button>
-        <button id="cancelButton" type="button" class="button button--secondary button--full" hidden>Cancel generation</button>
-        <div class="export-actions">
-          <button id="downloadSVGButton" type="button" class="button button--secondary" disabled><svg class="icon" aria-hidden="true"><use href="#icon-download"/></svg>Export SVG</button>
-          <button id="downloadPNGButton" type="button" class="button button--secondary" disabled><svg class="icon" aria-hidden="true"><use href="#icon-download"/></svg>Export PNG</button>
+        <div class="primary-actions">
+          <button id="generateButton" type="submit" form="settingsForm" class="button button--primary" disabled><svg class="icon" aria-hidden="true"><use href="#icon-spark"/></svg>Generate</button>
+          <button id="stopButton" type="button" class="button button--secondary" hidden><svg class="icon" aria-hidden="true"><use href="#icon-stop"/></svg>Stop</button>
+          <button id="cancelButton" type="button" class="button button--secondary" hidden>Cancel</button>
+          <button id="exportButton" type="button" class="button button--secondary" disabled><svg class="icon" aria-hidden="true"><use href="#icon-download"/></svg>Export</button>
         </div>
-        <button id="shareButton" type="button" class="button button--secondary button--full" disabled hidden>Share PNG</button>
-        <span class="action-caption">Vector artwork. Ready for any size.</span>
       </footer>
     </aside>
   </main>
+  <dialog id="exportDialog" class="export-dialog" aria-labelledby="exportTitle" aria-describedby="exportDescription">
+    <div class="dialog-heading"><h2 id="exportTitle">Export artwork</h2><button id="exportCloseButton" class="button button--quiet button--icon" type="button" aria-label="Close export dialog" autofocus>&times;</button></div>
+    <p class="field-hint" id="exportDescription">The full artwork, without preview zoom or particle movement.</p>
+    <div class="field">
+      <span class="field-label" id="exportFormatLabel">Format</span>
+      <div class="segmented-control" role="radiogroup" aria-labelledby="exportFormatLabel">
+        <label class="segment"><input class="visually-hidden" type="radio" name="exportFormat" value="svg" checked><span>SVG</span></label>
+        <label class="segment"><input class="visually-hidden" type="radio" name="exportFormat" value="png"><span>PNG</span></label>
+      </div>
+    </div>
+    <div class="field" id="exportResolutionField" hidden>
+      <label class="field-label" for="exportResolution">PNG resolution</label>
+      <select class="input" id="exportResolution">
+        <option value="original">Preview size</option>
+        <option value="1024">1K &mdash; 1,024 px</option>
+        <option value="2048" selected>2K &mdash; 2,048 px</option>
+        <option value="4096">4K &mdash; 4,096 px</option>
+      </select>
+      <p class="field-hint">Longest edge; aspect ratio and transparency are preserved.</p>
+    </div>
+    <p id="exportSize" class="export-size"></p>
+    <p id="exportDialogStatus" class="status-message" role="status" aria-live="polite"></p>
+    <div class="dialog-actions">
+      <button id="exportDownloadButton" class="button button--primary" type="button" disabled>Download</button>
+      <button id="exportShareButton" class="button button--secondary" type="button" disabled hidden>Share</button>
+    </div>
+  </dialog>
 
   <script src="https://d3js.org/d3-delaunay.v6.min.js"></script>
   <script src="https://d3js.org/d3-polygon.v1.min.js"></script>
@@ -210,6 +236,7 @@
   <script src="particle-field.js"></script>
   <script src="particle-audio.js"></script>
   <script src="image-import.js"></script>
+  <script src="artwork-export.js"></script>
   <script src="stipple-art.js"></script>
 </body>
 </html>

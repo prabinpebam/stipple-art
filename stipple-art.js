@@ -7,10 +7,7 @@ document.addEventListener("DOMContentLoaded", function() {
   const imageUpload = document.getElementById('imageUpload');
   const randomSeedInput = document.getElementById('randomSeed');
   const generateButton = document.getElementById('generateButton');
-  const downloadSVGButton = document.getElementById('downloadSVGButton');
-  const downloadPNGButton = document.getElementById('downloadPNGButton');
-  let pngExporting = false;
-  let preparedShare = null;
+  const exportButton = document.getElementById('exportButton');
   const progressBarContainer = document.getElementById('progressBarContainer');
   const progressBar = document.getElementById('progressBar');
   const progressValue = document.getElementById('progressValue');
@@ -108,19 +105,18 @@ document.addEventListener("DOMContentLoaded", function() {
   let appliedResolution = importOption('resolutionOption');
   let hasTransparency = false;
   const importControls = document.querySelectorAll('input[name="resolutionOption"]');
-  const panModeButton = document.getElementById('panModeButton');
-  const playModeButton = document.getElementById('playModeButton');
   const cancelButton = document.getElementById('cancelButton');
-  const shareButton = document.getElementById('shareButton');
-  shareButton.hidden = !navigator.share || !navigator.canShare;
-  function touchMode(play) {
-    viewport.touchPlay = play;
+  const artworkExport = new ArtworkExport(() => renderedArtwork);
+  document.addEventListener('studio-export-opened', () => {
     viewport.endGesture();
-    panModeButton.setAttribute('aria-pressed', String(!play));
-    playModeButton.setAttribute('aria-pressed', String(play));
-  }
-  panModeButton.addEventListener('click', () => touchMode(false));
-  playModeButton.addEventListener('click', () => touchMode(true));
+    syncMouseInteraction();
+    particleAudio.silence();
+    viewport.schedule();
+  });
+  document.addEventListener('studio-export-closed', () => {
+    syncMouseInteraction();
+    viewport.schedule();
+  });
   canvas.addEventListener('particle-touch', event => {
     if (!particles.enabled) return;
     particles.move(event.detail.point.x, event.detail.point.y, event.detail.timestamp);
@@ -138,10 +134,8 @@ document.addEventListener("DOMContentLoaded", function() {
     mouseInteractionSwitch.title = reducedMotion.matches ? 'Disabled by your reduced-motion preference.' :
       'Move over the artwork to scatter shapes. Preview only.';
     const enabled = mouseInteractionSwitch.checked && !busyMode && !reducedMotion.matches &&
-      !document.getElementById('previewWorkspace').inert && Boolean(renderedArtwork);
+      !document.getElementById('previewWorkspace').inert && !artworkExport.dialog.open && Boolean(renderedArtwork);
     if (particles.enabled !== enabled) particles.setEnabled(enabled);
-    playModeButton.disabled = !enabled;
-    if (!enabled && viewport.touchPlay) touchMode(false);
     if (!enabled) particleAudio.silence();
   }
   mouseInteractionSwitch.addEventListener('change', () => {
@@ -158,8 +152,11 @@ document.addEventListener("DOMContentLoaded", function() {
     particles.move(point.x, point.y, event.timeStamp);
     viewport.schedule();
   });
-  ['pointerleave', 'pointerdown', 'pointercancel', 'wheel', 'dblclick'].forEach(type => {
+  ['pointerleave', 'pointercancel', 'wheel', 'dblclick'].forEach(type => {
     canvas.addEventListener(type, () => particles.leave(), { passive: true });
+  });
+  canvas.addEventListener('pointerdown', event => {
+    if (event.pointerType === 'mouse') particles.leave();
   });
   stage.addEventListener('keydown', () => particles.leave());
   window.addEventListener('blur', () => {
@@ -232,9 +229,8 @@ document.addEventListener("DOMContentLoaded", function() {
     syncOrientationControls();
     syncMouseInteraction();
     generateButton.disabled = Boolean(mode) || !image;
-    downloadSVGButton.disabled = mode === 'loading' || mode === 'static' || !stipplePoints.length;
-    downloadPNGButton.disabled = downloadSVGButton.disabled || pngExporting;
-    shareButton.disabled = downloadPNGButton.disabled;
+    generateButton.hidden = mode === 'static' || mode === 'animation';
+    exportButton.disabled = mode === 'loading' || mode === 'static' || !stipplePoints.length;
     cancelButton.hidden = mode !== 'static';
     if (mode === 'static') cancelButton.disabled = false;
     stopButton.hidden = mode !== 'animation';
@@ -243,7 +239,7 @@ document.addEventListener("DOMContentLoaded", function() {
     viewport.setEnabled(Boolean(image) && mode !== 'loading');
     document.getElementById('previewState').textContent = mode === 'loading' ? 'Loading image' :
       mode === 'static' ? 'Refining dots' : mode === 'animation' ? 'Animating' :
-      stipplePoints.length ? `${stipplePoints.length.toLocaleString()} marks` : image ? 'Image ready' : 'No image yet';
+      stipplePoints.length ? `${stipplePoints.length.toLocaleString()} dots` : image ? 'Image ready' : 'No image yet';
   }
   syncOrientationControls();
 
@@ -481,8 +477,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
   // Retain the exact rendered geometry and colors for SVG export.
   function renderStippleArt() {
-    preparedShare = null;
-    shareButton.textContent = 'Share PNG';
     renderedArtwork = null;
     stage.dataset.paper = currentStippleColor === 'white' ? 'dark' : 'light';
     stage.classList.toggle('has-image', Boolean(image));
@@ -517,97 +511,6 @@ document.addEventListener("DOMContentLoaded", function() {
     viewport.schedule();
   }
   
-  function createSVG() {
-      if (!renderedArtwork) {
-        throw new Error('Generate stipple art before exporting.');
-      }
-      const { width, height, background, marks } = renderedArtwork;
-      let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`;
-      svgContent += `<rect width="100%" height="100%" fill="${background}"/>`;
-      marks.forEach(mark => {
-        if (mark.vertices) {
-          const points = mark.vertices.map(vertex => vertex.join(',')).join(' ');
-          svgContent += `<polygon points="${points}" fill="${mark.fillColor}" fill-opacity="${mark.opacity}" />`;
-        } else {
-          svgContent += `<circle cx="${mark.cx}" cy="${mark.cy}" r="${mark.radius}" fill="${mark.fillColor}" fill-opacity="${mark.opacity}" />`;
-        }
-      });
-      svgContent += '</svg>';
-      return svgContent;
-  }
-
-  function saveBlob(blob, filename) {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
-  }
-
-  function downloadSVG() {
-    try {
-      saveBlob(new Blob([createSVG()], { type: 'image/svg+xml;charset=utf-8' }), 'stipple_art.svg');
-      showStatus('SVG exported. Your artwork is ready for any size.');
-    } catch (error) {
-      console.error("Error in downloading SVG:", error);
-      showStatus(error.message, 'error');
-    }
-  }
-
-  async function downloadPNG(share = false) {
-      if (pngExporting) return;
-      let url, output;
-      try {
-        const svg = createSVG();
-        const artworkSnapshot = renderedArtwork;
-        const { width, height } = renderedArtwork;
-        pngExporting = true;
-        downloadPNGButton.disabled = true;
-        shareButton.disabled = true;
-        url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
-        const snapshot = new Image();
-        await new Promise((resolve, reject) => {
-          snapshot.onload = resolve;
-          snapshot.onerror = () => reject(new Error('The PNG export could not render the artwork.'));
-          snapshot.src = url;
-        });
-        output = document.createElement('canvas');
-        output.width = width;
-        output.height = height;
-        const context = output.getContext('2d');
-        if (!context) throw new Error('The browser could not allocate a PNG export canvas.');
-        context.drawImage(snapshot, 0, 0);
-        const blob = await new Promise((resolve, reject) => {
-          output.toBlob(result => {
-            if (result) resolve(result);
-            else reject(new Error('The browser could not encode the PNG export.'));
-          }, 'image/png');
-        });
-        if (share) {
-          if (renderedArtwork !== artworkSnapshot) throw new Error('Artwork changed while preparing the share. Try again.');
-          const file = new File([blob], 'stipple_art.png', { type: 'image/png' });
-          preparedShare = file;
-          shareButton.textContent = 'Share PNG';
-          showStatus('PNG ready. Tap Share PNG to choose where to save it.');
-        } else {
-          saveBlob(blob, 'stipple_art.png');
-          showStatus('PNG exported.');
-        }
-      } catch (error) {
-        console.error('Error exporting PNG:', error);
-        showStatus(error.message, 'error');
-      } finally {
-        if (url) URL.revokeObjectURL(url);
-        if (output) output.width = output.height = 0;
-        pngExporting = false;
-        downloadPNGButton.disabled = downloadSVGButton.disabled;
-        shareButton.disabled = downloadPNGButton.disabled;
-        shareButton.textContent = 'Share PNG';
-      }
-  }
   
   // Handle image upload and drag-and-drop.
   async function handleImageFile(file) {
@@ -634,6 +537,7 @@ document.addEventListener("DOMContentLoaded", function() {
       document.getElementById('imageFileName').title = file.name;
       document.getElementById('uploadHint').textContent = 'Click to replace your image';
       document.getElementById('previewTitle').textContent = file.name;
+      document.getElementById('previewTitle').title = file.name;
       const original = `${prepared.originalWidth.toLocaleString()} x ${prepared.originalHeight.toLocaleString()}`;
       const working = `${image.width.toLocaleString()} x ${image.height.toLocaleString()}`;
       document.getElementById('imageDimensions').textContent = `${working} px working`;
@@ -732,17 +636,6 @@ document.addEventListener("DOMContentLoaded", function() {
       showStatus('Generation cancelled.');
     } else reportError(error);
   }
-  shareButton.addEventListener('click', async () => {
-    if (!preparedShare) { shareButton.textContent = 'Preparing...'; await downloadPNG(true); return; }
-    try {
-      if (!navigator.canShare({ files: [preparedShare] })) throw new Error('File sharing is unavailable. Use Export PNG instead.');
-      await navigator.share({ files: [preparedShare], title: 'Stipple art' });
-      showStatus('Artwork shared.');
-    } catch (error) {
-      if (error.name === 'AbortError') showStatus('Sharing cancelled.');
-      else { console.error('Share PNG:', error); showStatus(error.message, 'error'); }
-    }
-  });
 
   [...shapeInputs, ...orientationInputs].forEach(input => {
     input.addEventListener('change', () => {
@@ -761,9 +654,4 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   });
   
-  // Download SVG event.
-  downloadSVGButton.addEventListener('click', function() {
-    downloadSVG();
-  });
-  downloadPNGButton.addEventListener('click', () => downloadPNG());
 });

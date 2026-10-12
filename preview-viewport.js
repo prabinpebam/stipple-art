@@ -26,7 +26,6 @@
       this.enabled = false;
       this.frame = null;
       this.pointers = new Map();
-      this.touchPlay = false;
       this.width = stage.clientWidth;
       this.height = stage.clientHeight;
       this.out = document.getElementById('zoomOutButton');
@@ -66,12 +65,12 @@
         stage.focus({ preventScroll: true });
         canvas.setPointerCapture(event.pointerId);
         this.pointers.set(event.pointerId, this.localPoint(event));
-        if (event.pointerType !== 'mouse' && this.touchPlay && this.pointers.size === 1) {
+        if (event.pointerType !== 'mouse' && this.pointers.size === 1) {
           canvas.dispatchEvent(new CustomEvent('particle-touch', { detail: { point: this.localPoint(event), timestamp: event.timeStamp } }));
         } else {
           canvas.dispatchEvent(new Event('particle-touch-end'));
         }
-        stage.classList.add('is-panning');
+        stage.classList.toggle('is-panning', event.pointerType === 'mouse' || this.pointers.size > 1);
       });
       canvas.addEventListener('pointermove', event => {
         if (!this.pointers.has(event.pointerId)) return;
@@ -80,7 +79,7 @@
         const next = this.localPoint(event);
         this.pointers.set(event.pointerId, next);
         if (this.pointers.size === 1) {
-          if (event.pointerType !== 'mouse' && this.touchPlay) {
+          if (event.pointerType !== 'mouse') {
             canvas.dispatchEvent(new CustomEvent('particle-touch', { detail: { point: next, timestamp: event.timeStamp } }));
           } else this.pan(next.x - previous.x, next.y - previous.y);
         } else {
@@ -96,7 +95,7 @@
       const finish = event => {
         canvas.dispatchEvent(new Event('particle-touch-end'));
         this.pointers.delete(event.pointerId);
-        if (!this.pointers.size) stage.classList.remove('is-panning');
+        stage.classList.toggle('is-panning', event.pointerType === 'mouse' ? this.pointers.size > 0 : this.pointers.size > 1);
       };
       ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(type => canvas.addEventListener(type, finish));
       this.apply();

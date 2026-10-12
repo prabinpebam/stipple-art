@@ -85,6 +85,7 @@ test('zoom, pan, and fit bursts coalesce into one draw of the latest view', t =>
     if (original === undefined) delete globalThis.requestAnimationFrame;
     else globalThis.requestAnimationFrame = original;
   });
+
   const viewport = Object.create(PreviewViewport.prototype);
   Object.assign(viewport, {
     width: 800, height: 600, enabled: true, frame: null,
@@ -111,4 +112,54 @@ test('zoom, pan, and fit bursts coalesce into one draw of the latest view', t =>
   assert.equal(drawn.length, 2);
   assert.equal(drawn[1].zoom, 2);
   assert.equal(viewport.output.value, '200%');
+});
+
+test('one finger plays, two fingers navigate, and a remaining finger resumes play', t => {
+  const oldDocument = globalThis.document, oldRAF = globalThis.requestAnimationFrame;
+  const controls = new Map();
+  globalThis.document = { getElementById(id) {
+    if (!controls.has(id)) controls.set(id, new EventTarget());
+    return controls.get(id);
+  } };
+  globalThis.requestAnimationFrame = () => 1;
+  t.after(() => {
+    if (oldDocument === undefined) delete globalThis.document;
+    else globalThis.document = oldDocument;
+    if (oldRAF === undefined) delete globalThis.requestAnimationFrame;
+    else globalThis.requestAnimationFrame = oldRAF;
+  });
+  const stage = new EventTarget(), canvas = new EventTarget();
+  const captures = new Set();
+  stage.clientWidth = 800;
+  stage.clientHeight = 600;
+  stage.classList = { toggle() {}, add() {}, remove() {} };
+  stage.focus = () => {};
+  stage.getBoundingClientRect = () => ({ left: 0, top: 0 });
+  canvas.setPointerCapture = id => captures.add(id);
+  canvas.hasPointerCapture = id => captures.has(id);
+  canvas.releasePointerCapture = id => captures.delete(id);
+  const viewport = new PreviewViewport(stage, canvas, () => {});
+  viewport.setEnabled(true);
+  let plays = 0;
+  canvas.addEventListener('particle-touch', () => plays++);
+  const pointer = (type, id, x, y) => {
+    const event = new Event(type, { cancelable: true });
+    Object.assign(event, { pointerId: id, pointerType: 'touch', button: 0, clientX: x, clientY: y });
+    canvas.dispatchEvent(event);
+  };
+  pointer('pointerdown', 1, 300, 300);
+  pointer('pointermove', 1, 310, 300);
+  assert.equal(plays, 2);
+  assert.deepEqual(viewport.view, { zoom: 1, x: 0, y: 0 });
+  pointer('pointerdown', 2, 410, 300);
+  pointer('pointermove', 2, 510, 300);
+  assert.equal(viewport.view.zoom, 2);
+  assert.equal(plays, 2);
+  const view = { ...viewport.view };
+  pointer('pointerup', 2, 510, 300);
+  pointer('pointermove', 1, 320, 300);
+  assert.equal(plays, 3);
+  assert.deepEqual(viewport.view, view);
+  pointer('pointercancel', 1, 320, 300);
+  assert.equal(viewport.pointers.size, 0);
 });
